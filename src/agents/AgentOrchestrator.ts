@@ -1,23 +1,126 @@
-import { Agent, run, webSearchTool, codeInterpreterTool } from '@openai/agents';
+import { Agent, run, webSearchTool, codeInterpreterTool, OpenAIProvider, setDefaultModelProvider, tool, user, assistant, system } from '@openai/agents';
+import { z } from 'zod/v3';
+import OpenAI from 'openai';
 import { App } from 'obsidian';
-import { ApprovalRequest } from '../types';
+import { ApprovalRequest, ChatMessage } from '../types';
 
 export class AgentOrchestrator {
 	private app: App;
 	private conductor: Agent;
 	private apiKey: string;
+	private model: string;
+	private openaiClient: OpenAI;
+	private provider: OpenAIProvider;
 
-	constructor(app: App, apiKey: string) {
+	/**
+	 * Convert chat messages to agent input format
+	 */
+	private convertChatHistory(messages: ChatMessage[]): any[] {
+		return messages.map(msg => {
+			if (msg.role === 'user') {
+				return user(msg.content);
+			} else if (msg.role === 'assistant') {
+				return assistant(msg.content);
+			} else if (msg.role === 'system') {
+				return system(msg.content);
+			}
+			// Skip unknown message types
+			return null;
+		}).filter(Boolean);
+	}
+
+	constructor(app: App, apiKey: string, model: string = 'gpt-4.1') {
 		this.app = app;
 		this.apiKey = apiKey;
+		this.model = model;
 		
-		// Set the API key for OpenAI
-		process.env.OPENAI_API_KEY = apiKey;
+		// Create OpenAI client with browser support for Obsidian
+		this.openaiClient = new OpenAI({
+			apiKey: apiKey,
+			dangerouslyAllowBrowser: true
+		});
 		
-		// Initialize the conductor agent with OpenAI hosted tools
+		// Create provider with our configured client
+		this.provider = new OpenAIProvider({
+			openAIClient: this.openaiClient
+		});
+		
+		// Set as default provider for all agents
+		setDefaultModelProvider(this.provider);
+		
+		// Create vault-specific tools
+		const createNoteTool = tool({
+			name: 'create_note',
+			description: 'Create a new note in the Obsidian vault',
+			parameters: z.object({
+				path: z.string().describe('The file path for the new note (e.g., "Notes/MyNote.md")'),
+				content: z.string().describe('The content of the note in Markdown format')
+			}),
+			needsApproval: async () => true, // Always require approval for creating notes
+			execute: async ({ path, content }) => {
+				// This will be executed after approval
+				try {
+					await this.app.vault.create(path, content);
+					return `Successfully created note at ${path}`;
+				} catch (error) {
+					return `Failed to create note: ${error.message}`;
+				}
+			}
+		});
+
+		const modifyNoteTool = tool({
+			name: 'modify_note',
+			description: 'Modify an existing note in the Obsidian vault',
+			parameters: z.object({
+				path: z.string().describe('The file path of the note to modify'),
+				content: z.string().describe('The new content for the note')
+			}),
+			needsApproval: async () => true, // Always require approval for modifying notes
+			execute: async ({ path, content }) => {
+				try {
+					const file = this.app.vault.getAbstractFileByPath(path);
+					if (file && 'extension' in file) { // Check if it's a TFile
+						await this.app.vault.modify(file as any, content);
+						return `Successfully modified note at ${path}`;
+					}
+					return `File not found: ${path}`;
+				} catch (error) {
+					return `Failed to modify note: ${error.message}`;
+				}
+			}
+		});
+
+		const searchVaultTool = tool({
+			name: 'search_vault',
+			description: 'Search for notes in the Obsidian vault',
+			parameters: z.object({
+				query: z.string().describe('The search query')
+			}),
+			needsApproval: async () => false, // No approval needed for searching
+			execute: async ({ query }) => {
+				// Simple search implementation - in production, you'd want more sophisticated search
+				const files = this.app.vault.getMarkdownFiles();
+				const results: string[] = [];
+				
+				for (const file of files) {
+					const content = await this.app.vault.cachedRead(file);
+					if (content.toLowerCase().includes(query.toLowerCase()) || 
+						file.path.toLowerCase().includes(query.toLowerCase())) {
+						results.push(`- ${file.path}`);
+					}
+				}
+				
+				if (results.length === 0) {
+					return `No results found for "${query}"`;
+				}
+				return `Found ${results.length} results:\n${results.join('\n')}`;
+			}
+		});
+		
+		// Initialize the conductor agent with OpenAI hosted tools and vault tools
 		this.conductor = new Agent({
 			name: 'Conductor',
-			model: 'gpt-4o',
+			model: this.model,
 			instructions: `You are Alex Chen, the Chief Orchestration Officer of this Obsidian assistant.
 
 Your personality:
@@ -36,10 +139,20 @@ Guidelines:
 - Ask for clarification when requests are ambiguous
 - Provide context when searching for information
 
-Note: I cannot directly access or modify files in your Obsidian vault yet. Please describe what you'd like me to help with, and I'll provide guidance or create content that you can then save to your vault.`,
+You have access to the following tools:
+1. web_search: Search the web for current information
+2. code_interpreter: Run code for analysis and calculations
+3. search_vault: Search through the Obsidian vault
+4. create_note: Create new notes (requires approval)
+5. modify_note: Modify existing notes (requires approval)
+
+Always ask for user approval before creating or modifying notes.`,
 			tools: [
 				webSearchTool(),
-				codeInterpreterTool()
+				codeInterpreterTool(),
+				searchVaultTool,
+				createNoteTool,
+				modifyNoteTool
 			],
 			modelSettings: {
 				temperature: 0.7,
@@ -49,9 +162,98 @@ Note: I cannot directly access or modify files in your Obsidian vault yet. Pleas
 	}
 
 	/**
+	 * Process messages with streaming, accepting chat history
+	 */
+	async processMessagesWithHistoryStream(
+		messages: ChatMessage[],
+		onChunk: (chunk: string) => void,
+		onToolCall?: (toolName: string, args: any) => void,
+		onApprovalNeeded?: (interruptions: any[], streamState: any) => Promise<void>
+	): Promise<{
+		response: string;
+		requiresApproval?: boolean;
+		approvalData?: ApprovalRequest;
+		stream?: any; // StreamedRunResult
+	}> {
+		const agentMessages = this.convertChatHistory(messages);
+		return this.processMessageStream(agentMessages, onChunk, onToolCall, onApprovalNeeded);
+	}
+
+	/**
+	 * Process a user message through the agent system with streaming
+	 */
+	async processMessageStream(
+		message: string | any[], // Can be a string or array of message history
+		onChunk: (chunk: string) => void,
+		onToolCall?: (toolName: string, args: any) => void,
+		onApprovalNeeded?: (interruptions: any[], streamState: any) => Promise<void>
+	): Promise<{
+		response: string;
+		requiresApproval?: boolean;
+		approvalData?: ApprovalRequest;
+		stream?: any; // StreamedRunResult
+	}> {
+		try {
+			let fullResponse = '';
+			let currentText = '';
+			
+			// Run the message through the conductor agent with streaming
+			const streamResult = await run(this.conductor, message, { stream: true });
+			
+			// Process the stream events
+			for await (const event of streamResult) {
+				if (event.type === 'raw_model_stream_event') {
+					// Handle raw model events (text chunks)
+					const data = event.data;
+					if ('type' in data && data.type === 'output_text_delta' && 'delta' in data) {
+						onChunk(data.delta as string);
+						currentText += data.delta as string;
+					}
+				} else if (event.type === 'run_item_stream_event') {
+					// Handle tool calls
+					if (event.name === 'tool_called' && onToolCall) {
+						const item = event.item;
+						if ('name' in item && 'arguments' in item) {
+							onToolCall((item as any).name, (item as any).arguments);
+						}
+					}
+				}
+			}
+			
+			// Wait for stream completion
+			await streamResult.completed;
+			// The final output is in the currentText we accumulated
+			fullResponse = currentText;
+			
+			// Check for interruptions (tool approvals needed)
+			if (streamResult.interruptions && streamResult.interruptions.length > 0) {
+				return {
+					response: fullResponse,
+					requiresApproval: true,
+					approvalData: {
+						id: Date.now().toString(),
+						type: 'create', // Will be determined by tool type
+						description: 'Tool approval required',
+						content: JSON.stringify(streamResult.interruptions)
+					},
+					stream: streamResult
+				};
+			}
+			
+			return {
+				response: fullResponse,
+				requiresApproval: false
+			};
+		} catch (error) {
+			console.error('Error processing streaming message through agents:', error);
+			throw error;
+		}
+	}
+
+	/**
 	 * Process a user message through the agent system
 	 */
-	async processMessage(message: string): Promise<{
+	async processMessage(message: string | any[]): Promise<{
 		response: string;
 		requiresApproval?: boolean;
 		approvalData?: ApprovalRequest;
@@ -83,6 +285,39 @@ Note: I cannot directly access or modify files in your Obsidian vault yet. Pleas
 			console.error('Error processing message through agents:', error);
 			throw error;
 		}
+	}
+
+
+	/**
+	 * Process a command from the command palette with streaming
+	 */
+	async processCommandStream(
+		command: string,
+		input: string,
+		onChunk: (chunk: string) => void,
+		onToolCall?: (toolName: string, args: any) => void
+	): Promise<{
+		response: string;
+		requiresApproval?: boolean;
+		approvalData?: ApprovalRequest;
+	}> {
+		let enhancedMessage = '';
+		
+		switch (command) {
+			case 'analyse':
+				enhancedMessage = `Please analyze the following: ${input}. Search through my vault first, then provide comprehensive insights.`;
+				break;
+			case 'research':
+				enhancedMessage = `Please research the following topic: ${input}. Use vault search first, then web search if needed to provide comprehensive information.`;
+				break;
+			case 'tidy':
+				enhancedMessage = `Please help me organize my files: ${input}. First search for relevant files, then suggest organization improvements.`;
+				break;
+			default:
+				enhancedMessage = input;
+		}
+		
+		return this.processMessageStream(enhancedMessage, onChunk, onToolCall);
 	}
 
 	/**
@@ -162,7 +397,81 @@ Note: I cannot directly access or modify files in your Obsidian vault yet. Pleas
 	}
 
 	/**
-	 * Handle approval response
+	 * Handle tool approval for streaming interruptions
+	 */
+	async handleStreamApproval(
+		stream: any,
+		approvals: Map<string, boolean>,
+		onChunk: (chunk: string) => void
+	): Promise<{
+		response: string;
+		requiresApproval?: boolean;
+		approvalData?: ApprovalRequest;
+		stream?: any; // StreamedRunResult
+	}> {
+		if (!stream.interruptions || stream.interruptions.length === 0) {
+			return {
+				response: 'No approvals needed',
+				requiresApproval: false
+			};
+		}
+
+		const state = stream.state;
+		
+		// Process each interruption
+		for (const interruption of stream.interruptions) {
+			const approved = approvals.get(interruption.id) ?? false;
+			if (approved) {
+				state.approve(interruption);
+			} else {
+				state.reject(interruption);
+			}
+		}
+
+		// Resume execution with streaming using the existing state which includes history
+		const resumedStream = await run(this.conductor, state, { stream: true });
+		
+		let fullResponse = '';
+		let currentText = '';
+		
+		// Process the resumed stream
+		for await (const event of resumedStream) {
+			if (event.type === 'raw_model_stream_event') {
+				const data = event.data;
+				if ('type' in data && data.type === 'output_text_delta' && 'delta' in data) {
+					onChunk(data.delta as string);
+					currentText += data.delta as string;
+				}
+			}
+		}
+		
+		await resumedStream.completed;
+		// The final output is in the currentText we accumulated
+		fullResponse = currentText;
+		
+		// Check for more interruptions
+		if (resumedStream.interruptions && resumedStream.interruptions.length > 0) {
+			return {
+				response: fullResponse,
+				requiresApproval: true,
+				approvalData: {
+					id: Date.now().toString(),
+					type: 'create',
+					description: 'Additional tool approval required',
+					content: JSON.stringify(resumedStream.interruptions)
+				},
+				stream: resumedStream
+			};
+		}
+		
+		return {
+			response: fullResponse,
+			requiresApproval: false
+		};
+	}
+
+	/**
+	 * Handle approval response (legacy method for backward compatibility)
 	 */
 	async handleApproval(approved: boolean, approvalData: ApprovalRequest): Promise<string> {
 		if (approved) {

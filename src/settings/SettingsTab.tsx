@@ -43,21 +43,49 @@ export class ChatAssistantSettingTab extends PluginSettingTab {
 					})
 			);
 
-		// Model selection
-		new Setting(containerEl)
+		// Model selection with detailed descriptions
+		const modelDesc = new Setting(containerEl)
 			.setName('AI Model')
-			.setDesc('Select the OpenAI model to use')
-			.addDropdown((dropdown) =>
+			.setDesc('Select the OpenAI model to use');
+		
+		modelDesc.addDropdown((dropdown) => {
 				dropdown
-					.addOption('gpt-4-turbo-preview', 'GPT-4 Turbo')
-					.addOption('gpt-4', 'GPT-4')
-					.addOption('gpt-3.5-turbo', 'GPT-3.5 Turbo')
+					.addOption('o3', 'O3 - Advanced Reasoning (Best for complex tasks)')
+					.addOption('gpt-4.1', 'GPT-4.1 - Flagship (Excellent coding & instruction following)')
+					.addOption('gpt-4.1-mini', 'GPT-4.1 Mini - Balanced (83% cheaper than GPT-4o)')
+					.addOption('gpt-4.1-nano', 'GPT-4.1 Nano - Fast & Cheap (For simple tasks)')
 					.setValue(this.plugin.settings.model)
 					.onChange(async (value) => {
 						this.plugin.settings.model = value;
 						await this.plugin.saveSettings();
-					})
-			);
+						
+						// Update model description
+						updateModelDescription(value);
+					});
+				
+				// Function to update model description
+				const updateModelDescription = (model: string) => {
+					let desc = '';
+					switch (model) {
+						case 'o3':
+							desc = 'O3: Advanced reasoning with automatic tool usage. Best for complex multi-step problems. 200K-1M context. $2/$8 per M tokens.';
+							break;
+						case 'gpt-4.1':
+							desc = 'GPT-4.1: Top performance for coding and instructions. 1M context window. $2/$8 per M tokens.';
+							break;
+						case 'gpt-4.1-mini':
+							desc = 'GPT-4.1 Mini: Great balance of performance and cost. 1M context. $0.42/$1.68 per M tokens.';
+							break;
+						case 'gpt-4.1-nano':
+							desc = 'GPT-4.1 Nano: Fastest and cheapest. Good for simple tasks. 1M context. $0.025/$0.40 per M tokens.';
+							break;
+					}
+					modelDesc.setDesc(desc || 'Select the OpenAI model to use');
+				};
+				
+				// Set initial description
+				updateModelDescription(this.plugin.settings.model);
+			});
 
 		// Max tokens setting
 		new Setting(containerEl)

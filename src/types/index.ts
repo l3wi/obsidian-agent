@@ -10,7 +10,7 @@ export const DEFAULT_SETTINGS: ChatAssistantSettings = {
 	openaiApiKey: '',
 	chatViewEnabled: true,
 	approvalRequired: true,
-	model: 'gpt-4-turbo-preview',
+	model: 'gpt-4.1',
 	maxTokens: 2000
 };
 
@@ -23,6 +23,7 @@ export interface ChatMessage {
 	error?: string;
 	approvalRequest?: ApprovalRequest;
 	approvalStatus?: 'pending' | 'approved' | 'rejected';
+	streamResult?: any; // StreamedRunResult from agents SDK
 }
 
 export interface SlashCommand {

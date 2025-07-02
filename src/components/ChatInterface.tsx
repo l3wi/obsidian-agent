@@ -4,6 +4,7 @@ import { ChatMessage, ApprovalRequest, ToolResponse } from '../types';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
 import { ThinkingIndicator } from './ThinkingIndicator';
+import { ToolApprovalBubble } from './ToolApprovalBubble';
 import ObsidianChatAssistant from '../main';
 import { Notice } from 'obsidian';
 import { ToolRouter } from '../core/ToolRouter';
@@ -32,9 +33,9 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 	
 	useEffect(() => {
 		if (plugin.settings.openaiApiKey) {
-			agentOrchestrator.current = new AgentOrchestrator(plugin.app, plugin.settings.openaiApiKey);
+			agentOrchestrator.current = new AgentOrchestrator(plugin.app, plugin.settings.openaiApiKey, plugin.settings.model);
 		}
-	}, [plugin.settings.openaiApiKey]);
+	}, [plugin.settings.openaiApiKey, plugin.settings.model]);
 
 	// Update approval manager when settings change
 	useEffect(() => {
@@ -110,7 +111,16 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 		}
 
 		try {
-			const result = await agentOrchestrator.current.processCommand('analyse', input);
+			// For commands, we'll collect the full response before returning
+			let fullResponse = '';
+			const result = await agentOrchestrator.current.processCommandStream(
+				'analyse', 
+				input,
+				(chunk) => {
+					fullResponse += chunk;
+					// Could update a temporary message here if needed
+				}
+			);
 			return {
 				success: true,
 				message: result.response,
@@ -134,7 +144,14 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 		}
 
 		try {
-			const result = await agentOrchestrator.current.processCommand('research', input);
+			let fullResponse = '';
+			const result = await agentOrchestrator.current.processCommandStream(
+				'research', 
+				input,
+				(chunk) => {
+					fullResponse += chunk;
+				}
+			);
 			return {
 				success: true,
 				message: result.response,
@@ -158,7 +175,14 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 		}
 
 		try {
-			const result = await agentOrchestrator.current.processCommand('tidy', input);
+			let fullResponse = '';
+			const result = await agentOrchestrator.current.processCommandStream(
+				'tidy', 
+				input,
+				(chunk) => {
+					fullResponse += chunk;
+				}
+			);
 			return {
 				success: true,
 				message: result.response,
@@ -216,19 +240,50 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 				return;
 			}
 
-			// Process through agent orchestrator
-			const result = await agentOrchestrator.current.processMessage(content);
-			
+			// Create assistant message with streaming status
+			const assistantMessageId = (Date.now() + 1).toString();
 			const assistantMessage: ChatMessage = {
-				id: (Date.now() + 1).toString(),
+				id: assistantMessageId,
 				role: 'assistant',
-				content: result.response,
+				content: '',
 				timestamp: Date.now(),
-				status: 'complete',
-				approvalRequest: result.approvalData,
-				approvalStatus: result.requiresApproval ? 'pending' : undefined
+				status: 'streaming'
 			};
 			setMessages(prev => [...prev, assistantMessage]);
+
+			// Get all messages including the current user message
+			const allMessages = [...messages, userMessage];
+			
+			// Process through agent orchestrator with streaming, including history
+			const result = await agentOrchestrator.current.processMessagesWithHistoryStream(
+				allMessages,
+				(chunk) => {
+					// Update message content as chunks arrive
+					setMessages(prev => prev.map(msg => 
+						msg.id === assistantMessageId 
+							? { ...msg, content: msg.content + chunk }
+							: msg
+					));
+				},
+				(toolName, args) => {
+					// Optional: Handle tool calls (e.g., show which tool is being used)
+					console.log(`Using tool: ${toolName}`, args);
+				}
+			);
+			
+			// Update final message with complete status and approval data
+			setMessages(prev => prev.map(msg => 
+				msg.id === assistantMessageId 
+					? { 
+						...msg, 
+						content: result.response,
+						status: 'complete',
+						approvalRequest: result.approvalData,
+						approvalStatus: result.requiresApproval ? 'pending' : undefined,
+						streamResult: result.stream
+					}
+					: msg
+			));
 		} catch (error) {
 			console.error('Error processing message:', error);
 			const errorMessage: ChatMessage = {
@@ -242,6 +297,66 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 			setMessages(prev => [...prev, errorMessage]);
 		} finally {
 			setIsProcessing(false);
+		}
+	};
+
+	const handleToolApproval = async (messageId: string, approvals: Map<string, boolean>) => {
+		// Update the message status
+		setMessages(prev => prev.map(msg => 
+			msg.id === messageId 
+				? { ...msg, approvalStatus: 'approved' as const }
+				: msg
+		));
+
+		// Find the message with the stream result
+		const message = messages.find(m => m.id === messageId);
+		if (message?.streamResult && agentOrchestrator.current) {
+			setIsProcessing(true);
+			try {
+				// Create a new message for the resumed response
+				const resumedMessageId = Date.now().toString();
+				const resumedMessage: ChatMessage = {
+					id: resumedMessageId,
+					role: 'assistant',
+					content: '',
+					timestamp: Date.now(),
+					status: 'streaming'
+				};
+				setMessages(prev => [...prev, resumedMessage]);
+
+				// Handle the approval with streaming
+				const result = await agentOrchestrator.current.handleStreamApproval(
+					message.streamResult,
+					approvals,
+					(chunk) => {
+						// Update message content as chunks arrive
+						setMessages(prev => prev.map(msg => 
+							msg.id === resumedMessageId 
+								? { ...msg, content: msg.content + chunk }
+								: msg
+						));
+					}
+				);
+
+				// Update final message
+				setMessages(prev => prev.map(msg => 
+					msg.id === resumedMessageId 
+						? { 
+							...msg, 
+							content: result.response,
+							status: 'complete',
+							approvalRequest: result.approvalData,
+							approvalStatus: result.requiresApproval ? 'pending' : undefined,
+							streamResult: result.stream
+						}
+						: msg
+				));
+			} catch (error) {
+				console.error('Error handling tool approval:', error);
+				new Notice('Error processing tool approval');
+			} finally {
+				setIsProcessing(false);
+			}
 		}
 	};
 
@@ -338,6 +453,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 						message={message}
 						onApprove={handleApprove}
 						onReject={handleReject}
+						onToolApproval={handleToolApproval}
 					/>
 				))}
 				{isProcessing && <ThinkingIndicator />}
