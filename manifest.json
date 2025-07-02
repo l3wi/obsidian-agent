@@ -1,10 +1,10 @@
 {
-	"id": "obsidian-chat-assistant",
-	"name": "Obsidian Chat Assistant",
+	"id": "obsidian-agent",
+	"name": "Obsidian Agent",
 	"version": "0.1.0",
 	"minAppVersion": "0.15.0",
 	"description": "AI-powered chat interface to manage and grow your personal knowledge base with natural language commands.",
-	"author": "Your Name",
-	"authorUrl": "https://github.com/yourusername",
+	"author": "Lewis Freiberg",
+	"authorUrl": "https://github.com/l3wi/",
 	"isDesktopOnly": false
 }

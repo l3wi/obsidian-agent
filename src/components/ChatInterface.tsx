@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { useState, useRef, useEffect } from 'react';
-import { ChatMessage } from '../types';
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { ChatMessage, ApprovalRequest, ToolResponse } from '../types';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
 import { ThinkingIndicator } from './ThinkingIndicator';
@@ -13,7 +13,7 @@ interface ChatInterfaceProps {
 	plugin: ObsidianChatAssistant;
 }
 
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({ plugin }) => {
+export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, ref) => {
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const [isProcessing, setIsProcessing] = useState(false);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -30,6 +30,104 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ plugin }) => {
 	useEffect(() => {
 		approvalManager.current.setApprovalRequired(plugin.settings.approvalRequired);
 	}, [plugin.settings.approvalRequired]);
+
+	// Expose processCommand method to parent
+	useImperativeHandle(ref, () => ({
+		processCommand: async (command: string, input: string) => {
+			// Create a user message showing the command
+			const userMessage: ChatMessage = {
+				id: Date.now().toString(),
+				role: 'user',
+				content: `/${command} ${input}`,
+				timestamp: Date.now(),
+				status: 'complete'
+			};
+			setMessages(prev => [...prev, userMessage]);
+			setIsProcessing(true);
+
+			try {
+				// Process the specific command
+				let result;
+				switch (command) {
+					case 'analyse':
+						result = await processAnalyseCommand(input);
+						break;
+					case 'research':
+						result = await processResearchCommand(input);
+						break;
+					case 'tidy':
+						result = await processTidyCommand(input);
+						break;
+					default:
+						result = { success: false, message: `Unknown command: ${command}` };
+				}
+
+				const assistantMessage: ChatMessage = {
+					id: (Date.now() + 1).toString(),
+					role: 'assistant',
+					content: result.message,
+					timestamp: Date.now(),
+					status: result.success ? 'complete' : 'error',
+					error: result.success ? undefined : result.message,
+					approvalRequest: result.requiresApproval ? result.approvalData : undefined,
+					approvalStatus: result.requiresApproval ? 'pending' : undefined
+				};
+				setMessages(prev => [...prev, assistantMessage]);
+			} catch (error) {
+				console.error('Error processing command:', error);
+				const errorMessage: ChatMessage = {
+					id: (Date.now() + 1).toString(),
+					role: 'assistant',
+					content: `Error: ${error.message}`,
+					timestamp: Date.now(),
+					status: 'error',
+					error: error.message
+				};
+				setMessages(prev => [...prev, errorMessage]);
+			} finally {
+				setIsProcessing(false);
+			}
+		}
+	}));
+
+	// Command processing functions
+	const processAnalyseCommand = async (input: string): Promise<ToolResponse> => {
+		// For now, return a placeholder - will be implemented with AI integration
+		return {
+			success: true,
+			message: `Analyzing documents: "${input}"\n\nDocument analysis will be implemented with AI integration. The analysis will examine the specified documents and provide insights.`
+		};
+	};
+
+	const processResearchCommand = async (input: string): Promise<ToolResponse> => {
+		// For now, return a placeholder - will be implemented with o3 model and Exa
+		return {
+			success: true,
+			message: `Researching topic: "${input}"\n\nResearch functionality with o3 model and Exa integration will be implemented soon. This will search and compile comprehensive information on the topic.`
+		};
+	};
+
+	const processTidyCommand = async (input: string): Promise<ToolResponse> => {
+		// Demonstrate the approval system with a sample operation
+		const approvalRequest: ApprovalRequest = {
+			id: Date.now().toString(),
+			type: 'edit',
+			description: `Organize files based on: "${input}"`,
+			content: `Sample operations that would be performed:
+- Move untitled notes to "Inbox" folder
+- Rename files with timestamps
+- Create folder structure based on tags`,
+			filePath: 'Multiple files'
+		};
+
+		// Return a message that requires approval
+		return {
+			success: true,
+			message: 'I\'ve analyzed your vault structure. The following operations require your approval:',
+			requiresApproval: true,
+			approvalData: approvalRequest
+		};
+	};
 
 	const scrollToBottom = () => {
 		messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -62,31 +160,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ plugin }) => {
 
 		// Process the message
 		try {
-			// Check if it's a command
-			if (content.startsWith('/')) {
-				// Route the command through ToolRouter
-				const result = await toolRouter.current.routeCommand(content);
-				
-				const assistantMessage: ChatMessage = {
-					id: (Date.now() + 1).toString(),
-					role: 'assistant',
-					content: result.message,
-					timestamp: Date.now(),
-					status: result.success ? 'complete' : 'error',
-					error: result.success ? undefined : result.message
-				};
-				setMessages(prev => [...prev, assistantMessage]);
-			} else {
-				// Regular chat message - for MVP, just echo back
-				const assistantMessage: ChatMessage = {
-					id: (Date.now() + 1).toString(),
-					role: 'assistant',
-					content: 'Chat processing will be implemented in Version 1 with OpenAI integration.',
-					timestamp: Date.now(),
-					status: 'complete'
-				};
-				setMessages(prev => [...prev, assistantMessage]);
-			}
+			// Regular chat message - for MVP, just echo back
+			const assistantMessage: ChatMessage = {
+				id: (Date.now() + 1).toString(),
+				role: 'assistant',
+				content: 'Natural language chat processing will be implemented with OpenAI integration. For now, please use the command palette (Cmd/Ctrl+P) to access commands.',
+				timestamp: Date.now(),
+				status: 'complete'
+			};
+			setMessages(prev => [...prev, assistantMessage]);
 		} catch (error) {
 			console.error('Error processing message:', error);
 			const errorMessage: ChatMessage = {
@@ -101,6 +183,51 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ plugin }) => {
 		} finally {
 			setIsProcessing(false);
 		}
+	};
+
+	const handleApprove = async (messageId: string) => {
+		// Update the message status
+		setMessages(prev => prev.map(msg => 
+			msg.id === messageId 
+				? { ...msg, approvalStatus: 'approved' as const }
+				: msg
+		));
+
+		// Find the message and execute the approved action
+		const message = messages.find(m => m.id === messageId);
+		if (message?.approvalRequest) {
+			// Execute the approved operation through ApprovalManager
+			const result = await approvalManager.current.executeApprovedOperation(message.approvalRequest);
+			
+			// Add a follow-up message with the result
+			const resultMessage: ChatMessage = {
+				id: Date.now().toString(),
+				role: 'assistant',
+				content: result.message,
+				timestamp: Date.now(),
+				status: result.success ? 'complete' : 'error'
+			};
+			setMessages(prev => [...prev, resultMessage]);
+		}
+	};
+
+	const handleReject = async (messageId: string) => {
+		// Update the message status
+		setMessages(prev => prev.map(msg => 
+			msg.id === messageId 
+				? { ...msg, approvalStatus: 'rejected' as const }
+				: msg
+		));
+
+		// Add a follow-up message
+		const resultMessage: ChatMessage = {
+			id: Date.now().toString(),
+			role: 'assistant',
+			content: 'Operation cancelled.',
+			timestamp: Date.now(),
+			status: 'complete'
+		};
+		setMessages(prev => [...prev, resultMessage]);
 	};
 
 	const handleClearChat = () => {
@@ -123,16 +250,22 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ plugin }) => {
 				{messages.length === 0 && (
 					<div className="chat-welcome">
 						<p>Welcome to Chat Assistant!</p>
-						<p>Try these commands:</p>
+						<p>Use the Command Palette (Cmd/Ctrl+P) to access:</p>
 						<ul>
-							<li><code>/note My New Note</code> - Create a note</li>
-							<li><code>/search keyword</code> - Search your vault</li>
-							<li><code>/help</code> - Show all commands</li>
+							<li><strong>Analyse documents</strong> - AI-powered document analysis</li>
+							<li><strong>Research topic</strong> - Research with o3 model and web search</li>
+							<li><strong>Tidy files</strong> - Organize your vault structure</li>
 						</ul>
+						<p>Natural language chat coming soon!</p>
 					</div>
 				)}
 				{messages.map((message) => (
-					<MessageBubble key={message.id} message={message} />
+					<MessageBubble 
+						key={message.id} 
+						message={message}
+						onApprove={handleApprove}
+						onReject={handleReject}
+					/>
 				))}
 				{isProcessing && <ThinkingIndicator />}
 				<div ref={messagesEndRef} />
@@ -143,4 +276,4 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ plugin }) => {
 			/>
 		</div>
 	);
-};
+});

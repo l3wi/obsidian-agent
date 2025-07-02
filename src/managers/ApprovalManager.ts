@@ -123,4 +123,36 @@ export class ApprovalManager {
 	hasPendingApprovals(): boolean {
 		return this.pendingApprovals.size > 0;
 	}
+
+	/**
+	 * Execute an approved operation directly (used by chat interface)
+	 * @param request The approval request containing operation details
+	 * @returns Promise that resolves with the result
+	 */
+	async executeApprovedOperation(request: ApprovalRequest): Promise<{ success: boolean; message: string }> {
+		try {
+			const noteTool = new NoteTool(this.app);
+			
+			// Create a vault operation from the approval request
+			const operation: VaultOperation = {
+				type: request.type as any,
+				path: request.filePath || '',
+				content: request.content
+			};
+
+			const success = await noteTool.executeApprovedOperation(operation);
+			
+			return {
+				success,
+				message: success 
+					? `Successfully ${request.type}d ${request.filePath || 'files'}` 
+					: `Failed to ${request.type} ${request.filePath || 'files'}`
+			};
+		} catch (error) {
+			return {
+				success: false,
+				message: `Error: ${error.message}`
+			};
+		}
+	}
 }

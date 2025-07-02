@@ -9,6 +9,7 @@ export const CHAT_VIEW_TYPE = 'chat-assistant-view';
 export class ChatView extends ItemView {
 	plugin: ObsidianChatAssistant;
 	root: Root | null = null;
+	chatInterfaceRef: React.RefObject<any> = React.createRef();
 
 	constructor(leaf: WorkspaceLeaf, plugin: ObsidianChatAssistant) {
 		super(leaf);
@@ -33,11 +34,11 @@ export class ChatView extends ItemView {
 		container.addClass('chat-assistant-container');
 
 		// Create React root and render the chat interface
-		const reactContainer = container.createDiv();
+		const reactContainer = container.createDiv({ cls: 'chat-assistant-react-root' });
 		this.root = createRoot(reactContainer);
 		this.root.render(
 			<React.StrictMode>
-				<ChatInterface plugin={this.plugin} />
+				<ChatInterface plugin={this.plugin} ref={this.chatInterfaceRef} />
 			</React.StrictMode>
 		);
 	}
@@ -47,6 +48,13 @@ export class ChatView extends ItemView {
 		if (this.root) {
 			this.root.unmount();
 			this.root = null;
+		}
+	}
+
+	processCommand(command: string, input: string) {
+		// Call the ChatInterface's processCommand method
+		if (this.chatInterfaceRef.current) {
+			this.chatInterfaceRef.current.processCommand(command, input);
 		}
 	}
 }
