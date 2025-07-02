@@ -1,11 +1,10 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
-	"version": "1.0.0",
+	"id": "obsidian-agent",
+	"name": "Obsidian Agent",
+	"version": "0.1.0",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"description": "AI-powered chat interface to manage and grow your personal knowledge base with natural language commands.",
+	"author": "Lewis Freiberg",
+	"authorUrl": "https://github.com/l3wi/",
 	"isDesktopOnly": false
 }
