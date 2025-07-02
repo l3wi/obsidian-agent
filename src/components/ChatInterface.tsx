@@ -8,6 +8,7 @@ import ObsidianChatAssistant from '../main';
 import { Notice } from 'obsidian';
 import { ToolRouter } from '../core/ToolRouter';
 import { ApprovalManager } from '../managers/ApprovalManager';
+import { AgentOrchestrator } from '../agents/AgentOrchestrator';
 
 interface ChatInterfaceProps {
 	plugin: ObsidianChatAssistant;
@@ -25,6 +26,15 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 	const toolRouter = useRef<ToolRouter>(
 		new ToolRouter(plugin.app, approvalManager.current)
 	);
+	
+	// Initialize agent orchestrator
+	const agentOrchestrator = useRef<AgentOrchestrator | null>(null);
+	
+	useEffect(() => {
+		if (plugin.settings.openaiApiKey) {
+			agentOrchestrator.current = new AgentOrchestrator(plugin.app, plugin.settings.openaiApiKey);
+		}
+	}, [plugin.settings.openaiApiKey]);
 
 	// Update approval manager when settings change
 	useEffect(() => {
@@ -92,41 +102,75 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 
 	// Command processing functions
 	const processAnalyseCommand = async (input: string): Promise<ToolResponse> => {
-		// For now, return a placeholder - will be implemented with AI integration
-		return {
-			success: true,
-			message: `Analyzing documents: "${input}"\n\nDocument analysis will be implemented with AI integration. The analysis will examine the specified documents and provide insights.`
-		};
+		if (!agentOrchestrator.current) {
+			return {
+				success: false,
+				message: 'Please set your OpenAI API key in settings to use AI features.'
+			};
+		}
+
+		try {
+			const result = await agentOrchestrator.current.processCommand('analyse', input);
+			return {
+				success: true,
+				message: result.response,
+				requiresApproval: result.requiresApproval,
+				approvalData: result.approvalData
+			};
+		} catch (error) {
+			return {
+				success: false,
+				message: `Error: ${error.message}`
+			};
+		}
 	};
 
 	const processResearchCommand = async (input: string): Promise<ToolResponse> => {
-		// For now, return a placeholder - will be implemented with o3 model and Exa
-		return {
-			success: true,
-			message: `Researching topic: "${input}"\n\nResearch functionality with o3 model and Exa integration will be implemented soon. This will search and compile comprehensive information on the topic.`
-		};
+		if (!agentOrchestrator.current) {
+			return {
+				success: false,
+				message: 'Please set your OpenAI API key in settings to use AI features.'
+			};
+		}
+
+		try {
+			const result = await agentOrchestrator.current.processCommand('research', input);
+			return {
+				success: true,
+				message: result.response,
+				requiresApproval: result.requiresApproval,
+				approvalData: result.approvalData
+			};
+		} catch (error) {
+			return {
+				success: false,
+				message: `Error: ${error.message}`
+			};
+		}
 	};
 
 	const processTidyCommand = async (input: string): Promise<ToolResponse> => {
-		// Demonstrate the approval system with a sample operation
-		const approvalRequest: ApprovalRequest = {
-			id: Date.now().toString(),
-			type: 'edit',
-			description: `Organize files based on: "${input}"`,
-			content: `Sample operations that would be performed:
-- Move untitled notes to "Inbox" folder
-- Rename files with timestamps
-- Create folder structure based on tags`,
-			filePath: 'Multiple files'
-		};
+		if (!agentOrchestrator.current) {
+			return {
+				success: false,
+				message: 'Please set your OpenAI API key in settings to use AI features.'
+			};
+		}
 
-		// Return a message that requires approval
-		return {
-			success: true,
-			message: 'I\'ve analyzed your vault structure. The following operations require your approval:',
-			requiresApproval: true,
-			approvalData: approvalRequest
-		};
+		try {
+			const result = await agentOrchestrator.current.processCommand('tidy', input);
+			return {
+				success: true,
+				message: result.response,
+				requiresApproval: result.requiresApproval,
+				approvalData: result.approvalData
+			};
+		} catch (error) {
+			return {
+				success: false,
+				message: `Error: ${error.message}`
+			};
+		}
 	};
 
 	const scrollToBottom = () => {
@@ -160,13 +204,29 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 
 		// Process the message
 		try {
-			// Regular chat message - for MVP, just echo back
+			if (!agentOrchestrator.current) {
+				const assistantMessage: ChatMessage = {
+					id: (Date.now() + 1).toString(),
+					role: 'assistant',
+					content: 'Please set your OpenAI API key in settings to use chat features.',
+					timestamp: Date.now(),
+					status: 'complete'
+				};
+				setMessages(prev => [...prev, assistantMessage]);
+				return;
+			}
+
+			// Process through agent orchestrator
+			const result = await agentOrchestrator.current.processMessage(content);
+			
 			const assistantMessage: ChatMessage = {
 				id: (Date.now() + 1).toString(),
 				role: 'assistant',
-				content: 'Natural language chat processing will be implemented with OpenAI integration. For now, please use the command palette (Cmd/Ctrl+P) to access commands.',
+				content: result.response,
 				timestamp: Date.now(),
-				status: 'complete'
+				status: 'complete',
+				approvalRequest: result.approvalData,
+				approvalStatus: result.requiresApproval ? 'pending' : undefined
 			};
 			setMessages(prev => [...prev, assistantMessage]);
 		} catch (error) {
@@ -195,19 +255,33 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 
 		// Find the message and execute the approved action
 		const message = messages.find(m => m.id === messageId);
-		if (message?.approvalRequest) {
-			// Execute the approved operation through ApprovalManager
-			const result = await approvalManager.current.executeApprovedOperation(message.approvalRequest);
-			
-			// Add a follow-up message with the result
-			const resultMessage: ChatMessage = {
-				id: Date.now().toString(),
-				role: 'assistant',
-				content: result.message,
-				timestamp: Date.now(),
-				status: result.success ? 'complete' : 'error'
-			};
-			setMessages(prev => [...prev, resultMessage]);
+		if (message?.approvalRequest && agentOrchestrator.current) {
+			try {
+				// Send approval to agent orchestrator
+				const result = await agentOrchestrator.current.handleApproval(true, message.approvalRequest);
+				
+				// Add a follow-up message with the result
+				const resultMessage: ChatMessage = {
+					id: Date.now().toString(),
+					role: 'assistant',
+					content: result,
+					timestamp: Date.now(),
+					status: 'complete'
+				};
+				setMessages(prev => [...prev, resultMessage]);
+			} catch (error) {
+				// Fallback to approval manager
+				const result = await approvalManager.current.executeApprovedOperation(message.approvalRequest);
+				
+				const resultMessage: ChatMessage = {
+					id: Date.now().toString(),
+					role: 'assistant',
+					content: result.message,
+					timestamp: Date.now(),
+					status: result.success ? 'complete' : 'error'
+				};
+				setMessages(prev => [...prev, resultMessage]);
+			}
 		}
 	};
 
@@ -249,14 +323,15 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 			<div className="chat-messages">
 				{messages.length === 0 && (
 					<div className="chat-welcome">
-						<p>Welcome to Chat Assistant!</p>
-						<p>Use the Command Palette (Cmd/Ctrl+P) to access:</p>
+						<p>Welcome to Obsidian Chat Assistant!</p>
+						<p>I'm Alex, your AI conductor. I can help you with:</p>
 						<ul>
-							<li><strong>Analyse documents</strong> - AI-powered document analysis</li>
-							<li><strong>Research topic</strong> - Research with o3 model and web search</li>
-							<li><strong>Tidy files</strong> - Organize your vault structure</li>
+							<li><strong>Research</strong> - Search your vault and the web for information</li>
+							<li><strong>Analysis</strong> - Analyze documents and provide insights</li>
+							<li><strong>Organization</strong> - Create, edit, and organize your notes</li>
 						</ul>
-						<p>Natural language chat coming soon!</p>
+						<p>You can chat naturally with me or use the Command Palette (Cmd/Ctrl+P) for specific tasks.</p>
+						<p className="chat-welcome-note">Make sure to set your OpenAI API key in settings to get started!</p>
 					</div>
 				)}
 				{messages.map((message) => (

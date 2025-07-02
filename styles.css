@@ -109,6 +109,13 @@
 	font-size: 13px;
 }
 
+.chat-welcome-note {
+	margin-top: 15px;
+	font-size: 0.9em;
+	color: var(--text-muted);
+	font-style: italic;
+}
+
 /* Message Bubbles */
 .message-bubble {
 	max-width: 70%;
