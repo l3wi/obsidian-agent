@@ -257,10 +257,8 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 		const message = messages.find(m => m.id === messageId);
 		if (message?.approvalRequest && agentOrchestrator.current) {
 			try {
-				// Send approval to agent orchestrator
 				const result = await agentOrchestrator.current.handleApproval(true, message.approvalRequest);
 				
-				// Add a follow-up message with the result
 				const resultMessage: ChatMessage = {
 					id: Date.now().toString(),
 					role: 'assistant',

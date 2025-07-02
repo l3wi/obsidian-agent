@@ -1,4 +1,4 @@
-import { Agent, run } from '@openai/agents';
+import { Agent, run, webSearchTool, codeInterpreterTool } from '@openai/agents';
 import { App } from 'obsidian';
 import { ApprovalRequest } from '../types';
 
@@ -11,7 +11,10 @@ export class AgentOrchestrator {
 		this.app = app;
 		this.apiKey = apiKey;
 		
-		// Initialize the conductor agent directly to avoid circular dependencies
+		// Set the API key for OpenAI
+		process.env.OPENAI_API_KEY = apiKey;
+		
+		// Initialize the conductor agent with OpenAI hosted tools
 		this.conductor = new Agent({
 			name: 'Conductor',
 			model: 'gpt-4o',
@@ -22,20 +25,26 @@ Your personality:
 - You excel at understanding user needs
 - Clear, concise, and directive communication style
 
-Your capabilities:
-1. Search the Obsidian vault for information
-2. Analyze documents and provide insights
-3. Research topics using web search
-4. Create and edit notes in the vault
-5. Organize files and folders
+Your tools:
+1. web_search: Search the web for current information
+2. code_interpreter: Run code for analysis, calculations, and data processing
 
 Guidelines:
 - Always explain what you're doing and why
+- Use web_search for current information and external research
+- Use code_interpreter for data analysis, calculations, or creating visualizations
 - Ask for clarification when requests are ambiguous
-- Present proposed file operations clearly for approval
-- Keep track of the overall task progress
+- Provide context when searching for information
 
-When users ask you to create or modify files, always present the proposed changes for approval first.`
+Note: I cannot directly access or modify files in your Obsidian vault yet. Please describe what you'd like me to help with, and I'll provide guidance or create content that you can then save to your vault.`,
+			tools: [
+				webSearchTool(),
+				codeInterpreterTool()
+			],
+			modelSettings: {
+				temperature: 0.7,
+				parallelToolCalls: true
+			}
 		});
 	}
 
@@ -88,13 +97,13 @@ When users ask you to create or modify files, always present the proposed change
 		
 		switch (command) {
 			case 'analyse':
-				enhancedMessage = `Please analyze the following: ${input}. Search through my vault and provide comprehensive insights.`;
+				enhancedMessage = `Please analyze the following: ${input}. Search through my vault first, then provide comprehensive insights.`;
 				break;
 			case 'research':
-				enhancedMessage = `Please research the following topic: ${input}. Use both vault search and web search to provide comprehensive information.`;
+				enhancedMessage = `Please research the following topic: ${input}. Use vault search first, then web search if needed to provide comprehensive information.`;
 				break;
 			case 'tidy':
-				enhancedMessage = `Please help me organize my files: ${input}. Suggest and implement file organization improvements.`;
+				enhancedMessage = `Please help me organize my files: ${input}. First search for relevant files, then suggest organization improvements.`;
 				break;
 			default:
 				enhancedMessage = input;
@@ -164,29 +173,5 @@ When users ask you to create or modify files, always present the proposed change
 		} else {
 			return 'The operation has been cancelled as requested.';
 		}
-	}
-
-	/**
-	 * Get vault search results (integration with Obsidian)
-	 */
-	async searchVault(query: string): Promise<any[]> {
-		const files = this.app.vault.getFiles();
-		const results = [];
-		
-		for (const file of files) {
-			if (file.extension === 'md') {
-				const content = await this.app.vault.cachedRead(file);
-				if (content.toLowerCase().includes(query.toLowerCase()) || 
-					file.basename.toLowerCase().includes(query.toLowerCase())) {
-					results.push({
-						path: file.path,
-						basename: file.basename,
-						excerpt: content.substring(0, 200) + '...'
-					});
-				}
-			}
-		}
-		
-		return results;
 	}
 }
