@@ -52,8 +52,19 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isProcessin
 				className="chat-send-button"
 				onClick={handleSend}
 				disabled={isProcessing || !input.trim()}
+				title="Send message"
 			>
-				{isProcessing ? '...' : 'Send'}
+				{isProcessing ? (
+					<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+						<circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 2">
+							<animateTransform attributeName="transform" type="rotate" from="0 10 10" to="360 10 10" dur="1s" repeatCount="indefinite" />
+						</circle>
+					</svg>
+				) : (
+					<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+						<path d="M2 10L17 2L13 10L17 18L2 10Z" fill="currentColor" />
+					</svg>
+				)}
 			</button>
 		</div>
 	);
