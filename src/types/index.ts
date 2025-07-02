@@ -21,6 +21,8 @@ export interface ChatMessage {
 	timestamp: number;
 	status?: 'pending' | 'streaming' | 'complete' | 'error';
 	error?: string;
+	approvalRequest?: ApprovalRequest;
+	approvalStatus?: 'pending' | 'approved' | 'rejected';
 }
 
 export interface SlashCommand {

@@ -1,4 +1,4 @@
-import { Plugin, Notice, WorkspaceLeaf } from 'obsidian';
+import { Plugin, Notice, WorkspaceLeaf, Modal, Setting, App } from 'obsidian';
 import { ChatAssistantSettings, DEFAULT_SETTINGS } from './types';
 import { ChatAssistantSettingTab } from './settings/SettingsTab';
 import { ChatView, CHAT_VIEW_TYPE } from './views/ChatView';
@@ -31,6 +31,33 @@ export default class ObsidianChatAssistant extends Plugin {
 			name: 'Open Chat Assistant',
 			callback: () => {
 				this.activateChatView();
+			}
+		});
+
+		// Add analyse command
+		this.addCommand({
+			id: 'analyse-documents',
+			name: 'Analyse documents',
+			callback: () => {
+				this.handleAnalyseCommand();
+			}
+		});
+
+		// Add research command
+		this.addCommand({
+			id: 'research-topic',
+			name: 'Research topic',
+			callback: () => {
+				this.handleResearchCommand();
+			}
+		});
+
+		// Add tidy command
+		this.addCommand({
+			id: 'tidy-files',
+			name: 'Tidy files and folders',
+			callback: () => {
+				this.handleTidyCommand();
 			}
 		});
 
@@ -82,5 +109,104 @@ export default class ObsidianChatAssistant extends Plugin {
 		if (leaf) {
 			workspace.revealLeaf(leaf);
 		}
+	}
+
+	async handleAnalyseCommand() {
+		const modal = new CommandInputModal(this.app, 'Analyse Documents', 'Enter documents or folders to analyse:', async (input) => {
+			// Activate chat view and send the analyse command
+			await this.activateChatView();
+			const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE);
+			if (leaves.length > 0) {
+				const chatView = leaves[0].view as ChatView;
+				chatView.processCommand('analyse', input);
+			}
+		});
+		modal.open();
+	}
+
+	async handleResearchCommand() {
+		const modal = new CommandInputModal(this.app, 'Research Topic', 'Enter topic to research:', async (input) => {
+			// Activate chat view and send the research command
+			await this.activateChatView();
+			const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE);
+			if (leaves.length > 0) {
+				const chatView = leaves[0].view as ChatView;
+				chatView.processCommand('research', input);
+			}
+		});
+		modal.open();
+	}
+
+	async handleTidyCommand() {
+		const modal = new CommandInputModal(this.app, 'Tidy Files', 'Enter instructions for tidying files/folders:', async (input) => {
+			// Activate chat view and send the tidy command
+			await this.activateChatView();
+			const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE);
+			if (leaves.length > 0) {
+				const chatView = leaves[0].view as ChatView;
+				chatView.processCommand('tidy', input);
+			}
+		});
+		modal.open();
+	}
+}
+
+class CommandInputModal extends Modal {
+	constructor(
+		app: App,
+		private title: string,
+		private placeholder: string,
+		private onSubmit: (input: string) => void
+	) {
+		super(app);
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.empty();
+		
+		contentEl.createEl('h2', { text: this.title });
+		
+		const inputContainer = contentEl.createDiv();
+		const input = inputContainer.createEl('textarea', {
+			attr: {
+				placeholder: this.placeholder,
+				rows: '4',
+				style: 'width: 100%; margin: 10px 0;'
+			}
+		});
+		
+		const buttonContainer = contentEl.createDiv({ 
+			attr: { style: 'display: flex; justify-content: flex-end; gap: 10px;' }
+		});
+		
+		const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
+		cancelBtn.onclick = () => this.close();
+		
+		const submitBtn = buttonContainer.createEl('button', { 
+			text: 'Submit',
+			cls: 'mod-cta'
+		});
+		submitBtn.onclick = () => {
+			const value = input.value.trim();
+			if (value) {
+				this.onSubmit(value);
+				this.close();
+			}
+		};
+		
+		// Focus input and allow Enter to submit
+		input.focus();
+		input.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter' && !e.shiftKey) {
+				e.preventDefault();
+				submitBtn.click();
+			}
+		});
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
 	}
 }
