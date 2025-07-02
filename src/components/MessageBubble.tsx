@@ -14,15 +14,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
 	return (
 		<div className={`message-bubble message-${message.role}`}>
 			<div className="message-content">
-				{message.content}
+				{message.content.split('\n').map((line, i) => (
+					<React.Fragment key={i}>
+						{line}
+						{i < message.content.split('\n').length - 1 && <br />}
+					</React.Fragment>
+				))}
 			</div>
 			<div className="message-metadata">
 				<span className="message-time">{formatTimestamp(message.timestamp)}</span>
 				{message.status === 'error' && (
-					<span className="message-status error">Error</span>
+					<span className="message-status error">• Error</span>
 				)}
 				{message.status === 'streaming' && (
-					<span className="message-status streaming">...</span>
+					<span className="message-status streaming">• Streaming</span>
 				)}
 			</div>
 		</div>

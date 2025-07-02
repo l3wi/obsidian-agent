@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { ChatMessage } from '../types';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
+import { ThinkingIndicator } from './ThinkingIndicator';
 import ObsidianChatAssistant from '../main';
 import { Notice } from 'obsidian';
 import { ToolRouter } from '../core/ToolRouter';
@@ -133,6 +134,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ plugin }) => {
 				{messages.map((message) => (
 					<MessageBubble key={message.id} message={message} />
 				))}
+				{isProcessing && <ThinkingIndicator />}
 				<div ref={messagesEndRef} />
 			</div>
 			<ChatInput 
