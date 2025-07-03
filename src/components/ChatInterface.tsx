@@ -368,9 +368,19 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 							);
 						},
 						(toolName, args) => {
-							// Handle tool calls (e.g., show which tool is being used)
-							setCurrentTool(toolName);
-							setToolHistory((prev) => [...prev, toolName]);
+							// Handle tool calls with filename context
+							let toolDisplay = toolName;
+							
+							// Extract filename for better context
+							if (args) {
+								const fileName = args.path?.split('/').pop() || args.sourcePath?.split('/').pop();
+								if (fileName) {
+									toolDisplay = `${toolName}: ${fileName}`;
+								}
+							}
+							
+							setCurrentTool(toolDisplay);
+							setToolHistory((prev) => [...prev, toolDisplay]);
 							console.log(`Using tool: ${toolName}`, args);
 
 							// Check if this tool needs approval

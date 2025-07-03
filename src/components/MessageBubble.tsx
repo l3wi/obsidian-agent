@@ -33,6 +33,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
 	// Get human-readable status message for tools
 	const getToolStatusMessage = (tool: string): string => {
+		// Check if tool includes filename (format: "tool_name: filename")
+		if (tool.includes(': ')) {
+			const [toolName, fileName] = tool.split(': ');
+			const toolMessages: Record<string, string> = {
+				create_note: `Creating note "${fileName}"...`,
+				modify_note: `Modifying note "${fileName}"...`,
+				delete_file: `Deleting file "${fileName}"...`,
+				create_folder: `Creating folder "${fileName}"...`,
+				copy_file: `Copying file "${fileName}"...`,
+			};
+			return toolMessages[toolName] || `Using ${tool}...`;
+		}
+		
+		// Fallback for tools without filenames
 		const toolMessages: Record<string, string> = {
 			create_note: "Creating note...",
 			modify_note: "Modifying note...",
@@ -59,11 +73,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 		// Generate summary
 		const summaryParts: string[] = [];
 		Object.entries(toolCounts).forEach(([tool, count]) => {
-			const toolName = tool.replace(/_/g, " ");
-			if (count > 1) {
-				summaryParts.push(`${toolName} (${count}x)`);
+			// Clean up tool name - handle both formats
+			let displayName = tool;
+			if (tool.includes(': ')) {
+				// Extract just the action and filename
+				const [toolName, fileName] = tool.split(': ');
+				displayName = `${toolName.replace(/_/g, " ")} ${fileName}`;
 			} else {
-				summaryParts.push(toolName);
+				displayName = tool.replace(/_/g, " ");
+			}
+			
+			if (count > 1) {
+				summaryParts.push(`${displayName} (${count}x)`);
+			} else {
+				summaryParts.push(displayName);
 			}
 		});
 
@@ -121,6 +144,42 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 		});
 
 		return changes;
+	};
+
+	const getApprovalActionSummary = () => {
+		if (!message.streamResult || !message.streamResult.interruptions) {
+			return "";
+		}
+
+		const actions: string[] = [];
+		message.streamResult.interruptions.forEach((interruption: any) => {
+			const toolName = interruption.rawItem?.name;
+			const args = interruption.rawItem?.arguments || {};
+			const fileName = args.path?.split('/').pop() || args.path;
+
+			switch (toolName) {
+				case "create_note":
+					actions.push(`create ${fileName}`);
+					break;
+				case "modify_note":
+					actions.push(`modify ${fileName}`);
+					break;
+				case "delete_file":
+					actions.push(`delete ${fileName}`);
+					break;
+				case "create_folder":
+					actions.push(`create folder ${fileName}`);
+					break;
+				case "copy_file":
+					const sourceFile = args.sourcePath?.split('/').pop() || args.sourcePath;
+					actions.push(`copy ${sourceFile}`);
+					break;
+			}
+		});
+
+		if (actions.length === 0) return "";
+		if (actions.length === 1) return `- ${actions[0]}`;
+		return `- ${actions.length} actions`;
 	};
 
 	const formatTimestamp = (timestamp: number) => {
@@ -219,8 +278,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 							className={`approval-status-indicator ${message.approvalStatus}`}
 						>
 							{message.approvalStatus === "approved"
-								? "✓ Approved"
-								: "✗ Rejected"}
+								? `✓ Approved ${getApprovalActionSummary()}`
+								: `✗ Rejected ${getApprovalActionSummary()}`}
 						</div>
 					))}
 			</div>
