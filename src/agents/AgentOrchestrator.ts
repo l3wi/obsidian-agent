@@ -9,6 +9,7 @@ export class AgentOrchestrator {
 	private conductor: Agent;
 	private apiKey: string;
 	private model: string;
+	private maxTurns: number;
 	private openaiClient: OpenAI;
 	private provider: OpenAIProvider;
 
@@ -29,10 +30,16 @@ export class AgentOrchestrator {
 		}).filter(Boolean);
 	}
 
-	constructor(app: App, apiKey: string, model: string = 'gpt-4.1') {
+	constructor(app: App, apiKey: string, model: string = 'gpt-4.1', maxTurns: number = 20) {
 		this.app = app;
 		this.apiKey = apiKey;
 		this.model = model;
+		this.maxTurns = maxTurns;
+		
+		console.log('[AgentOrchestrator] Initialized with:', {
+			model,
+			maxTurns
+		});
 		
 		// Create OpenAI client with browser support for Obsidian
 		this.openaiClient = new OpenAI({
@@ -60,6 +67,10 @@ export class AgentOrchestrator {
 			execute: async ({ path, content }) => {
 				// This will be executed after approval
 				try {
+					const parentFolder = path.substring(0, path.lastIndexOf('/'));
+					if (parentFolder && !this.app.vault.getAbstractFileByPath(parentFolder)) {
+						await this.app.vault.createFolder(parentFolder);
+					}
 					await this.app.vault.create(path, content);
 					return `Successfully created note at ${path}`;
 				} catch (error) {
@@ -80,12 +91,72 @@ export class AgentOrchestrator {
 				try {
 					const file = this.app.vault.getAbstractFileByPath(path);
 					if (file && 'extension' in file) { // Check if it's a TFile
-						await this.app.vault.modify(file as any, content);
+						await this.app.vault.process(file as any, () => content);
 						return `Successfully modified note at ${path}`;
 					}
 					return `File not found: ${path}`;
 				} catch (error) {
 					return `Failed to modify note: ${error.message}`;
+				}
+			}
+		});
+
+		const createFolderTool = tool({
+			name: 'create_folder',
+			description: 'Create a new folder in the Obsidian vault',
+			parameters: z.object({
+				path: z.string().describe('The path for the new folder (e.g., "Notes/My Folder")')
+			}),
+			needsApproval: async () => true,
+			execute: async ({ path }) => {
+				try {
+					await this.app.vault.createFolder(path);
+					return `Successfully created folder at ${path}`;
+				} catch (error) {
+					return `Failed to create folder: ${error.message}`;
+				}
+			}
+		});
+
+		const copyFileTool = tool({
+			name: 'copy_file',
+			description: 'Copy a file or folder to a new location in the Obsidian vault',
+			parameters: z.object({
+				sourcePath: z.string().describe('The path of the file or folder to copy'),
+				destinationPath: z.string().describe('The path of the new file or folder')
+			}),
+			needsApproval: async () => true,
+			execute: async ({ sourcePath, destinationPath }) => {
+				try {
+					const file = this.app.vault.getAbstractFileByPath(sourcePath);
+					if (file) {
+						await this.app.vault.copy(file, destinationPath);
+						return `Successfully copied ${sourcePath} to ${destinationPath}`;
+					}
+					return `File not found: ${sourcePath}`;
+				} catch (error) {
+					return `Failed to copy file: ${error.message}`;
+				}
+			}
+		});
+
+		const deleteFileTool = tool({
+			name: 'delete_file',
+			description: 'Delete a file or folder in the Obsidian vault (moves to trash)',
+			parameters: z.object({
+				path: z.string().describe('The path of the file or folder to delete')
+			}),
+			needsApproval: async () => true,
+			execute: async ({ path }) => {
+				try {
+					const file = this.app.vault.getAbstractFileByPath(path);
+					if (file) {
+						await this.app.vault.trash(file, true);
+						return `Successfully moved ${path} to trash`;
+					}
+					return `File not found: ${path}`;
+				} catch (error) {
+					return `Failed to delete file: ${error.message}`;
 				}
 			}
 		});
@@ -152,7 +223,10 @@ Always ask for user approval before creating or modifying notes.`,
 				codeInterpreterTool(),
 				searchVaultTool,
 				createNoteTool,
-				modifyNoteTool
+				modifyNoteTool,
+				createFolderTool,
+				copyFileTool,
+				deleteFileTool
 			],
 			modelSettings: {
 				temperature: 0.7,
@@ -198,25 +272,39 @@ Always ask for user approval before creating or modifying notes.`,
 			let currentText = '';
 			
 			// Run the message through the conductor agent with streaming
-			const streamResult = await run(this.conductor, message, { stream: true });
+			const streamResult = await run(this.conductor, message, { stream: true, maxTurns: this.maxTurns });
 			
 			// Process the stream events
 			for await (const event of streamResult) {
-				if (event.type === 'raw_model_stream_event') {
-					// Handle raw model events (text chunks)
-					const data = event.data;
-					if ('type' in data && data.type === 'output_text_delta' && 'delta' in data) {
-						onChunk(data.delta as string);
-						currentText += data.delta as string;
-					}
-				} else if (event.type === 'run_item_stream_event') {
-					// Handle tool calls
-					if (event.name === 'tool_called' && onToolCall) {
-						const item = event.item;
-						if ('name' in item && 'arguments' in item) {
-							onToolCall((item as any).name, (item as any).arguments);
+				console.log('[AgentOrchestrator] Stream event:', {
+					type: event.type,
+					name: 'name' in event ? event.name : undefined
+				});
+
+				switch (event.type) {
+					case 'raw_model_stream_event': {
+						const data = event.data;
+						if ('type' in data && data.type === 'output_text_delta' && 'delta' in data) {
+							onChunk(data.delta as string);
+							currentText += data.delta as string;
 						}
+						break;
 					}
+					case 'run_item_stream_event': {
+						if (event.name === 'tool_called' && onToolCall) {
+							const item = event.item;
+							if ('name' in item && 'arguments' in item) {
+								console.log('[AgentOrchestrator] Tool called:', {
+									tool: (item as any).name,
+									args: (item as any).arguments
+								});
+								onToolCall((item as any).name, (item as any).arguments);
+							}
+						}
+						break;
+					}
+					default:
+						break;
 				}
 			}
 			
@@ -429,7 +517,7 @@ Always ask for user approval before creating or modifying notes.`,
 		}
 
 		// Resume execution with streaming using the existing state which includes history
-		const resumedStream = await run(this.conductor, state, { stream: true });
+		const resumedStream = await run(this.conductor, state, { stream: true, maxTurns: this.maxTurns });
 		
 		let fullResponse = '';
 		let currentText = '';

@@ -63,7 +63,7 @@ export const ToolApprovalBubble: React.FC<ToolApprovalProps> = ({
 								</label>
 							</div>
 							<div className="tool-approval-details">
-								{toolName === 'create_note' && (
+								{toolName === 'write_file' && (
 									<>
 										<div>Path: {args.path}</div>
 										<div>Content preview: {args.content?.substring(0, 100)}...</div>

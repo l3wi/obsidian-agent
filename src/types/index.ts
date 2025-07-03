@@ -4,6 +4,7 @@ export interface ChatAssistantSettings {
 	approvalRequired: boolean;
 	model: string;
 	maxTokens: number;
+	maxTurns: number;
 }
 
 export const DEFAULT_SETTINGS: ChatAssistantSettings = {
@@ -11,7 +12,8 @@ export const DEFAULT_SETTINGS: ChatAssistantSettings = {
 	chatViewEnabled: true,
 	approvalRequired: true,
 	model: 'gpt-4.1',
-	maxTokens: 2000
+	maxTokens: 2000,
+	maxTurns: 20
 };
 
 export interface ChatMessage {

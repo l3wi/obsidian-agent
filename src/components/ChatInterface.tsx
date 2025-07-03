@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 're
 import { ChatMessage, ApprovalRequest, ToolResponse } from '../types';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
-import { ThinkingIndicator } from './ThinkingIndicator';
+
 import { ToolApprovalBubble } from './ToolApprovalBubble';
 import ObsidianChatAssistant from '../main';
 import { Notice } from 'obsidian';
@@ -18,6 +18,8 @@ interface ChatInterfaceProps {
 export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, ref) => {
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const [isProcessing, setIsProcessing] = useState(false);
+	const [currentTool, setCurrentTool] = useState<string | null>(null);
+	const [toolHistory, setToolHistory] = useState<string[]>([]);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	
 	// Initialize tool router and approval manager
@@ -33,9 +35,9 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 	
 	useEffect(() => {
 		if (plugin.settings.openaiApiKey) {
-			agentOrchestrator.current = new AgentOrchestrator(plugin.app, plugin.settings.openaiApiKey, plugin.settings.model);
+			agentOrchestrator.current = new AgentOrchestrator(plugin.app, plugin.settings.openaiApiKey, plugin.settings.model, plugin.settings.maxTurns);
 		}
-	}, [plugin.settings.openaiApiKey, plugin.settings.model]);
+	}, [plugin.settings.openaiApiKey, plugin.settings.model, plugin.settings.maxTurns]);
 
 	// Update approval manager when settings change
 	useEffect(() => {
@@ -228,6 +230,9 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 
 		// Process the message
 		try {
+			// Reset tool history for new message
+			setToolHistory([]);
+			
 			if (!agentOrchestrator.current) {
 				const assistantMessage: ChatMessage = {
 					id: (Date.now() + 1).toString(),
@@ -254,6 +259,10 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 			// Get all messages including the current user message
 			const allMessages = [...messages, userMessage];
 			
+			// Track tools that need approval
+			const pendingApprovals: any[] = [];
+			let hasApprovalTools = false;
+
 			// Process through agent orchestrator with streaming, including history
 			const result = await agentOrchestrator.current.processMessagesWithHistoryStream(
 				allMessages,
@@ -266,24 +275,62 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 					));
 				},
 				(toolName, args) => {
-					// Optional: Handle tool calls (e.g., show which tool is being used)
+					// Handle tool calls (e.g., show which tool is being used)
+					setCurrentTool(toolName);
+					setToolHistory(prev => [...prev, toolName]);
 					console.log(`Using tool: ${toolName}`, args);
+					
+					// Check if this tool needs approval
+					const approvalTools = ['create_note', 'modify_note', 'delete_file', 'create_folder', 'copy_file'];
+					if (approvalTools.includes(toolName)) {
+						hasApprovalTools = true;
+						pendingApprovals.push({
+							id: Date.now().toString() + Math.random(),
+							rawItem: { name: toolName, arguments: args }
+						});
+						
+						// Immediately show approval bubble
+						setMessages(prev => prev.map(msg => 
+							msg.id === assistantMessageId 
+								? { 
+									...msg, 
+									streamResult: { interruptions: pendingApprovals },
+									approvalStatus: 'pending'
+								}
+								: msg
+						));
+					}
 				}
 			);
 			
 			// Update final message with complete status and approval data
-			setMessages(prev => prev.map(msg => 
-				msg.id === assistantMessageId 
-					? { 
-						...msg, 
-						content: result.response,
-						status: 'complete',
-						approvalRequest: result.approvalData,
-						approvalStatus: result.requiresApproval ? 'pending' : undefined,
-						streamResult: result.stream
-					}
-					: msg
-			));
+			// Use pending approvals if we detected approval tools during streaming
+			if (hasApprovalTools && pendingApprovals.length > 0) {
+				setMessages(prev => prev.map(msg => 
+					msg.id === assistantMessageId 
+						? { 
+							...msg, 
+							content: result.response,
+							status: 'complete',
+							streamResult: result.stream || { interruptions: pendingApprovals },
+							approvalStatus: 'pending'
+						}
+						: msg
+				));
+			} else {
+				setMessages(prev => prev.map(msg => 
+					msg.id === assistantMessageId 
+						? { 
+							...msg, 
+							content: result.response,
+							status: 'complete',
+							approvalRequest: result.requiresApproval ? result.approvalData : undefined,
+							approvalStatus: result.requiresApproval ? 'pending' : undefined,
+							streamResult: result.stream
+						}
+						: msg
+				));
+			}
 		} catch (error) {
 			console.error('Error processing message:', error);
 			const errorMessage: ChatMessage = {
@@ -448,15 +495,18 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(({ plugin }, re
 					</div>
 				)}
 				{messages.map((message) => (
-					<MessageBubble 
-						key={message.id} 
-						message={message}
-						onApprove={handleApprove}
-						onReject={handleReject}
-						onToolApproval={handleToolApproval}
-					/>
+									<MessageBubble 
+					key={message.id} 
+					message={message}
+					onApprove={handleApprove}
+					onReject={handleReject}
+					onToolApproval={handleToolApproval}
+					isThinking={isProcessing && messages.indexOf(message) === messages.length - 1}
+					toolName={isProcessing && messages.indexOf(message) === messages.length - 1 ? currentTool || undefined : undefined}
+					toolHistory={isProcessing && messages.indexOf(message) === messages.length - 1 ? toolHistory : undefined}
+				/>
 				))}
-				{isProcessing && <ThinkingIndicator />}
+				
 				<div ref={messagesEndRef} />
 			</div>
 			<ChatInput 

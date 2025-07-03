@@ -97,8 +97,25 @@ export class ChatAssistantSettingTab extends PluginSettingTab {
 					.setValue(String(this.plugin.settings.maxTokens))
 					.onChange(async (value) => {
 						const tokens = parseInt(value, 10);
-						if (!isNaN(tokens) && tokens > 0) {
-							this.plugin.settings.maxTokens = tokens;
+													if (!isNaN(tokens) && tokens > 0) {
+								this.plugin.settings.maxTokens = tokens;
+								await this.plugin.saveSettings();
+							}
+						})
+			);
+
+		// Max turns setting
+		new Setting(containerEl)
+			.setName('Max Agent Turns')
+			.setDesc('Maximum number of turns for the AI agent to take before stopping. Higher values may lead to longer processing times.')
+			.addText((text) =>
+				text
+					.setPlaceholder('20')
+					.setValue(String(this.plugin.settings.maxTurns))
+					.onChange(async (value) => {
+						const turns = parseInt(value, 10);
+						if (!isNaN(turns) && turns > 0) {
+							this.plugin.settings.maxTurns = turns;
 							await this.plugin.saveSettings();
 						}
 					})
