@@ -562,11 +562,32 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 			};
 		}
 
+		if (!stream.state) {
+			console.error('[AgentOrchestrator] No state found in stream result');
+			return {
+				response: "Error: Unable to continue - no state found",
+				requiresApproval: false,
+			};
+		}
+
 		const state = stream.state;
 
 		// Process each interruption
 		for (const interruption of stream.interruptions) {
-			const approved = approvals.get(interruption.id) ?? false;
+			// Try different ID locations
+			const id = interruption.id || 
+				interruption.rawItem?.id || 
+				interruption.rawItem?.callId ||
+				interruption.rawItem?.providerData?.id;
+			
+			const approved = approvals.get(id) ?? false;
+			
+			console.log('[AgentOrchestrator] Processing interruption approval:', {
+				id,
+				approved,
+				interruption: interruption.rawItem?.name || interruption.name
+			});
+			
 			if (approved) {
 				state.approve(interruption);
 			} else {

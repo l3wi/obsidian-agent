@@ -18,7 +18,15 @@ export const ToolApprovalBubble: React.FC<ToolApprovalProps> = ({
 	const handleApproveAll = () => {
 		const allApproved = new Map<string, boolean>();
 		interruptions.forEach((interruption) => {
-			allApproved.set(interruption.id, true);
+			// Get the correct ID based on the interruption structure
+			const id = interruption.id || 
+				interruption.rawItem?.id || 
+				interruption.rawItem?.callId ||
+				interruption.rawItem?.providerData?.id;
+			
+			if (id) {
+				allApproved.set(id, true);
+			}
 		});
 		onApprove(allApproved);
 	};
