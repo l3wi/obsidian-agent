@@ -161,33 +161,40 @@ export class AgentOrchestrator {
 			}
 		});
 
-		const searchVaultTool = tool({
-			name: 'search_vault',
-			description: 'Search for notes in the Obsidian vault',
+		const advancedSearchTool = tool({
+			name: 'advanced_search',
+			description: 'Perform an advanced search of the Obsidian vault, including files, folders, and content.',
 			parameters: z.object({
-				query: z.string().describe('The search query')
+				query: z.string().describe('The search query, supporting operators like OR, -, and quotes for exact matches.'),
+				useRegex: z.boolean().optional().describe('Set to true to treat the query as a regular expression.'),
+				caseSensitive: z.boolean().optional().describe('Set to true for a case-sensitive search.')
 			}),
-			needsApproval: async () => false, // No approval needed for searching
-			execute: async ({ query }) => {
-				// Simple search implementation - in production, you'd want more sophisticated search
-				const files = this.app.vault.getMarkdownFiles();
-				const results: string[] = [];
-				
-				for (const file of files) {
-					const content = await this.app.vault.cachedRead(file);
-					if (content.toLowerCase().includes(query.toLowerCase()) || 
-						file.path.toLowerCase().includes(query.toLowerCase())) {
-						results.push(`- ${file.path}`);
+			needsApproval: async () => false,
+			execute: async ({ query, useRegex, caseSensitive }) => {
+				const searchResults = this.app.vault.getFiles().filter(file => {
+					let content = '';
+					let path = file.path;
+					
+					if (useRegex) {
+						const regex = new RegExp(query, caseSensitive ? '' : 'i');
+						return regex.test(path) || regex.test(content);
+					} else {
+						if (caseSensitive) {
+							return path.includes(query) || content.includes(query);
+						} else {
+							return path.toLowerCase().includes(query.toLowerCase()) || content.toLowerCase().includes(query.toLowerCase());
+						}
 					}
-				}
-				
-				if (results.length === 0) {
+				});
+
+				if (searchResults.length === 0) {
 					return `No results found for "${query}"`;
 				}
-				return `Found ${results.length} results:\n${results.join('\n')}`;
+
+				return `Found ${searchResults.length} results:\n${searchResults.map(file => `- ${file.path}`).join('\n')}`;
 			}
 		});
-		
+
 		// Initialize the conductor agent with OpenAI hosted tools and vault tools
 		this.conductor = new Agent({
 			name: 'Conductor',
@@ -219,7 +226,7 @@ You must follow this protocol for every user request:
 Your tools:
 1. web_search: Search the web for current information
 2. code_interpreter: Run code for analysis, calculations, and data processing
-3. search_vault: Search through the Obsidian vault
+3. advanced_search: Perform an advanced search of the Obsidian vault.
 4. create_note: Create new notes (requires approval)
 5. modify_note: Modify existing notes (requires approval)
 6. create_folder: Create new folders (requires approval)
@@ -230,13 +237,14 @@ Always ask for user approval before creating, modifying, or deleting files and f
 			tools: [
 				webSearchTool(),
 				codeInterpreterTool(),
-				searchVaultTool,
+				advancedSearchTool,
 				createNoteTool,
 				modifyNoteTool,
 				createFolderTool,
 				copyFileTool,
 				deleteFileTool
-			],
+			]
+		});
 			modelSettings: {
 				temperature: 0.7,
 				parallelToolCalls: true
