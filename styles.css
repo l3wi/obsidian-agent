@@ -497,6 +497,22 @@
     margin: 2px 0;
 }
 
+.tool-approval-content-preview {
+    margin-top: 8px;
+}
+
+.tool-approval-content-preview pre {
+    background-color: var(--background-primary);
+    padding: 8px;
+    border-radius: 4px;
+    margin-top: 4px;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
 .tool-approval-actions {
     display: flex;
     gap: 8px;

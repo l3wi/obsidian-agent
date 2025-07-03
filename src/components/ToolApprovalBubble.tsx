@@ -49,15 +49,43 @@ export const ToolApprovalBubble: React.FC<ToolApprovalProps> = ({
 					if (interruption.rawItem) {
 						// Manually created interruption from ChatInterface
 						toolName = interruption.rawItem.name;
-						args = interruption.rawItem.arguments || {};
+						// Parse arguments if they're a JSON string
+						const rawArgs = interruption.rawItem.arguments;
+						if (typeof rawArgs === 'string') {
+							try {
+								args = JSON.parse(rawArgs);
+							} catch {
+								args = { raw: rawArgs };
+							}
+						} else {
+							args = rawArgs || {};
+						}
 					} else if (interruption.item) {
 						// SDK interruption structure
 						toolName = interruption.item.name || "Unknown tool";
-						args = interruption.item.arguments || {};
+						const rawArgs = interruption.item.arguments;
+						if (typeof rawArgs === 'string') {
+							try {
+								args = JSON.parse(rawArgs);
+							} catch {
+								args = { raw: rawArgs };
+							}
+						} else {
+							args = rawArgs || {};
+						}
 					} else if (interruption.name) {
 						// Direct structure
 						toolName = interruption.name;
-						args = interruption.arguments || {};
+						const rawArgs = interruption.arguments;
+						if (typeof rawArgs === 'string') {
+							try {
+								args = JSON.parse(rawArgs);
+							} catch {
+								args = { raw: rawArgs };
+							}
+						} else {
+							args = rawArgs || {};
+						}
 					}
 
 					return (
@@ -82,6 +110,12 @@ export const ToolApprovalBubble: React.FC<ToolApprovalProps> = ({
 								)}
 								{toolName === "search_vault" && args.query && (
 									<div>Query: {args.query}</div>
+								)}
+								{(toolName === "modify_note" || toolName === "create_note") && args.content && (
+									<div className="tool-approval-content-preview">
+										<div>Content preview:</div>
+										<pre>{args.content.substring(0, 200)}{args.content.length > 200 ? '...' : ''}</pre>
+									</div>
 								)}
 							</div>
 						</div>
