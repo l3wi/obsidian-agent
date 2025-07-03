@@ -12,7 +12,6 @@ import { ChatInput } from "./ChatInput";
 
 import ObsidianChatAssistant from "../main";
 import { Notice } from "obsidian";
-import { ToolRouter } from "../core/ToolRouter";
 import { ApprovalManager } from "../managers/ApprovalManager";
 import { AgentOrchestrator } from "../agents/AgentOrchestrator";
 
@@ -31,13 +30,13 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 		const [currentTool, setCurrentTool] = useState<string | null>(null);
 		const [toolHistory, setToolHistory] = useState<string[]>([]);
 		const [contextFiles, setContextFiles] = useState<TFile[]>(
-			initialFiles || []
+			initialFiles || [],
 		);
 		const messagesEndRef = useRef<HTMLDivElement>(null);
 
 		// Initialize tool router and approval manager
 		const approvalManager = useRef<ApprovalManager>(
-			new ApprovalManager(plugin.app, plugin.settings.approvalRequired)
+			new ApprovalManager(plugin.app, plugin.settings.approvalRequired),
 		);
 
 		// Initialize agent orchestrator
@@ -49,7 +48,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 					plugin.app,
 					plugin.settings.openaiApiKey,
 					plugin.settings.model,
-					plugin.settings.maxTurns
+					plugin.settings.maxTurns,
 				);
 			}
 		}, [
@@ -61,7 +60,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 		// Update approval manager when settings change
 		useEffect(() => {
 			approvalManager.current.setApprovalRequired(
-				plugin.settings.approvalRequired
+				plugin.settings.approvalRequired,
 			);
 		}, [plugin.settings.approvalRequired]);
 
@@ -137,7 +136,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 
 		// Command processing functions
 		const processAnalyseCommand = async (
-			input: string
+			input: string,
 		): Promise<ToolResponse> => {
 			if (!agentOrchestrator.current) {
 				return {
@@ -148,14 +147,13 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 			}
 
 			try {
-				let fullResponse = "";
 				const result =
 					await agentOrchestrator.current.processCommandStream(
 						"analyse",
 						input,
 						(chunk) => {
-							fullResponse += chunk;
-						}
+							// Could update a temporary message here if needed
+						},
 					);
 				return {
 					success: true,
@@ -172,7 +170,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 		};
 
 		const processResearchCommand = async (
-			input: string
+			input: string,
 		): Promise<ToolResponse> => {
 			if (!agentOrchestrator.current) {
 				return {
@@ -183,14 +181,13 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 			}
 
 			try {
-				let fullResponse = "";
 				const result =
 					await agentOrchestrator.current.processCommandStream(
 						"research",
 						input,
 						(chunk) => {
-							fullResponse += chunk;
-						}
+							// Could update a temporary message here if needed
+						},
 					);
 				return {
 					success: true,
@@ -207,7 +204,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 		};
 
 		const processTidyCommand = async (
-			input: string
+			input: string,
 		): Promise<ToolResponse> => {
 			if (!agentOrchestrator.current) {
 				return {
@@ -218,14 +215,13 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 			}
 
 			try {
-				let fullResponse = "";
 				const result =
 					await agentOrchestrator.current.processCommandStream(
 						"tidy",
 						input,
 						(chunk) => {
-							fullResponse += chunk;
-						}
+							// Could update a temporary message here if needed
+						},
 					);
 				return {
 					success: true,
@@ -278,7 +274,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 								.join("\n")}`,
 							timestamp: Date.now(),
 							status: "complete",
-					  }
+						}
 					: null;
 
 			const messagesWithContext = contextMessage
@@ -336,9 +332,9 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 										? {
 												...msg,
 												content: msg.content + chunk,
-										  }
-										: msg
-								)
+											}
+										: msg,
+								),
 							);
 						},
 						(toolName, args) => {
@@ -376,12 +372,12 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 															pendingApprovals,
 													},
 													approvalStatus: "pending",
-											  }
-											: msg
-									)
+												}
+											: msg,
+									),
 								);
 							}
-						}
+						},
 					);
 
 				// Update final message with complete status and approval data
@@ -398,9 +394,9 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 											interruptions: pendingApprovals,
 										},
 										approvalStatus: "pending",
-								  }
-								: msg
-						)
+									}
+								: msg,
+						),
 					);
 				} else {
 					setMessages((prev) =>
@@ -417,9 +413,9 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 											? "pending"
 											: undefined,
 										streamResult: result.stream,
-								  }
-								: msg
-						)
+									}
+								: msg,
+						),
 					);
 				}
 			} catch (error) {
@@ -440,15 +436,15 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 
 		const handleToolApproval = async (
 			messageId: string,
-			approvals: Map<string, boolean>
+			approvals: Map<string, boolean>,
 		) => {
 			// Update the message status
 			setMessages((prev) =>
 				prev.map((msg) =>
 					msg.id === messageId
 						? { ...msg, approvalStatus: "approved" as const }
-						: msg
-				)
+						: msg,
+				),
 			);
 
 			// Find the message with the stream result
@@ -481,11 +477,11 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 													...msg,
 													content:
 														msg.content + chunk,
-											  }
-											: msg
-									)
+												}
+											: msg,
+									),
 								);
-							}
+							},
 						);
 
 					// Refresh context if files were modified
@@ -494,7 +490,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 							.map((id) => {
 								const interruption =
 									message.streamResult!.interruptions.find(
-										(i: any) => i.id === id
+										(i: any) => i.id === id,
 									);
 								return (
 									interruption?.arguments?.path ||
@@ -508,13 +504,13 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 								modifiedFiles.map(
 									(path: string) =>
 										plugin.app.vault.getAbstractFileByPath(
-											path
-										) as TFile
-								)
+											path,
+										) as TFile,
+								),
 							);
 							setContextFiles((prev) => [
 								...prev.filter(
-									(f) => !modifiedFiles.includes(f.path)
+									(f) => !modifiedFiles.includes(f.path),
 								),
 								...newFiles,
 							]);
@@ -534,9 +530,9 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 											? "pending"
 											: undefined,
 										streamResult: result.stream,
-								  }
-								: msg
-						)
+									}
+								: msg,
+						),
 					);
 				} catch (error) {
 					console.error("Error handling tool approval:", error);
@@ -553,8 +549,8 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 				prev.map((msg) =>
 					msg.id === messageId
 						? { ...msg, approvalStatus: "approved" as const }
-						: msg
-				)
+						: msg,
+				),
 			);
 
 			// Find the message and execute the approved action
@@ -564,7 +560,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 					const result =
 						await agentOrchestrator.current.handleApproval(
 							true,
-							message.approvalRequest
+							message.approvalRequest,
 						);
 
 					const resultMessage: ChatMessage = {
@@ -579,7 +575,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 					// Fallback to approval manager
 					const result =
 						await approvalManager.current.executeApprovedOperation(
-							message.approvalRequest
+							message.approvalRequest,
 						);
 
 					const resultMessage: ChatMessage = {
@@ -600,8 +596,8 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 				prev.map((msg) =>
 					msg.id === messageId
 						? { ...msg, approvalStatus: "rejected" as const }
-						: msg
-				)
+						: msg,
+				),
 			);
 
 			// Add a follow-up message
@@ -692,5 +688,5 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 				/>
 			</div>
 		);
-	}
+	},
 );

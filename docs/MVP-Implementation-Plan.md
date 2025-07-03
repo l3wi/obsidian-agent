@@ -142,10 +142,14 @@ obsidian-agent/
 ### ✅ Completed Features
 1. **Plugin Structure & Settings** - All phases completed
 2. **Chat View Implementation** - Fully implemented with React
-3. **Slash Commands** - Parser and both /note and /search commands implemented
-4. **Approval System** - Modal and manager fully functional
+3. **Slash Commands** - Parser and both /note and /search commands implemented (Note: /search removed in favor of AI agents)
+4. **Approval System** - Modal and manager fully functional with human-in-the-loop
 5. **Core Integration** - ToolRouter connects all components
 6. **Chat UI Enhancements** - Modern styling with proper layout
+7. **AI Agent Integration** - OpenAI-based agents with tool use
+8. **Streaming Responses** - Real-time message streaming with thinking indicators
+9. **Context Files** - File context system with badges display
+10. **Advanced Search** - AI-powered search replacing basic /search command
 
 ### 🚧 Future Enhancements (Post-MVP)
 - Chat persistence and history

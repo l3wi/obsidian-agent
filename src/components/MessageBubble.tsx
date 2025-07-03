@@ -28,7 +28,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 	toolName,
 	toolHistory,
 }) => {
-	const [isHovered, setIsHovered] = useState(false);
 	const [isCopied, setIsCopied] = useState(false);
 	const contentRef = useRef<HTMLDivElement>(null);
 
@@ -166,11 +165,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 	}, [message.content]);
 
 	return (
-		<div
-			className={`message-bubble message-${message.role}`}
-			onMouseEnter={() => setIsHovered(true)}
-			onMouseLeave={() => setIsHovered(false)}
-		>
+		<div className={`message-bubble message-${message.role}`}>
 			<div className="message-content-wrapper">
 				<div className="message-text" ref={contentRef}>
 					{/* Markdown content will be rendered here */}
@@ -270,18 +265,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 							xmlns="http://www.w3.org/2000/svg"
 						>
 							<rect
-								x="5.5"
-								y="5.5"
-								width="9"
-								height="9"
+								x="6"
+								y="6"
+								width="8"
+								height="8"
 								rx="1"
 								stroke="currentColor"
-								strokeWidth="0"
+								strokeWidth="1.2"
 							/>
-							<path
-								d="M3.5 10.5V2.5C3.5 1.94772 3.94772 1.5 4.5 1.5H12.5C13.0523 1.5 13.5 1.94772 13.5 2.5V3.5"
+							<rect
+								x="2"
+								y="2"
+								width="8"
+								height="8"
+								rx="1"
 								stroke="currentColor"
-								strokeWidth="1"
+								strokeWidth="1.2"
+								fill="none"
 							/>
 						</svg>
 					)}
