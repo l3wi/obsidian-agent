@@ -4,7 +4,6 @@ import { ChatMessage } from "../types";
 import { ApprovalBubble } from "./ApprovalBubble";
 import { MarkdownRenderer, Component } from "obsidian";
 import { ToolApprovalBubble } from "./ToolApprovalBubble";
-import { FileChangesList } from "./FileChangesList";
 
 interface MessageBubbleProps {
 	message: ChatMessage;
@@ -92,94 +91,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
 		if (summaryParts.length === 0) return null;
 		return `Actions: ${summaryParts.join(", ")}`;
-	};
-
-	// Extract file changes from approved tools
-	const getFileChanges = () => {
-		if (
-			!message.streamResult?.interruptions ||
-			message.approvalStatus !== "approved"
-		) {
-			return [];
-		}
-
-		const changes: any[] = [];
-		message.streamResult.interruptions.forEach((interruption: any) => {
-			const toolName = interruption.rawItem?.name;
-			const args = interruption.rawItem?.arguments || {};
-
-			switch (toolName) {
-				case "create_note":
-					changes.push({
-						type: "create",
-						path: args.path,
-					});
-					break;
-				case "modify_note":
-					changes.push({
-						type: "modify",
-						path: args.path,
-					});
-					break;
-				case "delete_file":
-					changes.push({
-						type: "delete",
-						path: args.path,
-					});
-					break;
-				case "create_folder":
-					changes.push({
-						type: "create_folder",
-						path: args.path,
-					});
-					break;
-				case "copy_file":
-					changes.push({
-						type: "copy",
-						path: args.sourcePath,
-						destinationPath: args.destinationPath,
-					});
-					break;
-			}
-		});
-
-		return changes;
-	};
-
-	const getApprovalActionSummary = () => {
-		if (!message.streamResult || !message.streamResult.interruptions) {
-			return "";
-		}
-
-		const actions: string[] = [];
-		message.streamResult.interruptions.forEach((interruption: any) => {
-			const toolName = interruption.rawItem?.name;
-			const args = interruption.rawItem?.arguments || {};
-			const fileName = args.path?.split('/').pop() || args.path;
-
-			switch (toolName) {
-				case "create_note":
-					actions.push(`create ${fileName}`);
-					break;
-				case "modify_note":
-					actions.push(`modify ${fileName}`);
-					break;
-				case "delete_file":
-					actions.push(`delete ${fileName}`);
-					break;
-				case "create_folder":
-					actions.push(`create folder ${fileName}`);
-					break;
-				case "copy_file":
-					const sourceFile = args.sourcePath?.split('/').pop() || args.sourcePath;
-					actions.push(`copy ${sourceFile}`);
-					break;
-			}
-		});
-
-		if (actions.length === 0) return "";
-		if (actions.length === 1) return `- ${actions[0]}`;
-		return `- ${actions.length} actions`;
 	};
 
 	const formatTimestamp = (timestamp: number) => {
@@ -270,18 +181,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 					)}
 				{message.approvalStatus &&
 					message.approvalStatus !== "pending" &&
-					(message.approvalStatus === "approved" &&
-					getFileChanges().length > 0 ? (
-						<FileChangesList changes={getFileChanges()} />
-					) : (
-						<div
-							className={`approval-status-indicator ${message.approvalStatus}`}
-						>
-							{message.approvalStatus === "approved"
-								? `✓ Approved ${getApprovalActionSummary()}`
-								: `✗ Rejected ${getApprovalActionSummary()}`}
-						</div>
-					))}
+					message.streamResult?.interruptions &&
+					message.streamResult.interruptions.length > 0 && (
+						<ToolApprovalBubble
+							interruptions={message.streamResult.interruptions}
+							onApprove={() => {}} // No-op for display only
+							onRejectAll={() => {}} // No-op for display only
+							showStatus={message.approvalStatus}
+						/>
+					)}
 			</div>
 
 			<div className="message-metadata">

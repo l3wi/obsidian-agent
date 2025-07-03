@@ -442,6 +442,7 @@
 .tool-approval-bubble {
     margin-top: 10px;
     padding: 8px 0;
+    width: 100%;
 }
 
 .tool-approval-header {
@@ -498,6 +499,29 @@
 .tool-approval-actions .approval-button {
     flex: 1;
     min-width: 100px;
+}
+
+.tool-approval-status {
+    display: flex;
+    justify-content: center;
+    margin-top: 12px;
+}
+
+.approval-status-badge {
+    padding: 6px 16px;
+    border-radius: 16px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.approval-status-badge.approved {
+    background-color: rgba(0, 255, 0, 0.1);
+    color: var(--text-success);
+}
+
+.approval-status-badge.rejected {
+    background-color: rgba(255, 0, 0, 0.1);
+    color: var(--text-error);
 }
 
 @keyframes pulse {
