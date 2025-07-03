@@ -134,12 +134,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 		}
 	}, [message.content]);
 
+	// Check if this is a tool-only message (no content, just approvals)
+	const isToolOnlyMessage = !message.content && (
+		(message.streamResult?.interruptions && message.streamResult.interruptions.length > 0) ||
+		message.approvalRequest
+	);
+
 	return (
-		<div className={`message-bubble message-${message.role}`}>
+		<div className={`message-bubble message-${message.role} ${isToolOnlyMessage ? 'tool-only' : ''}`}>
 			<div className="message-content-wrapper">
-				<div className="message-text" ref={contentRef}>
-					{/* Markdown content will be rendered here */}
-				</div>
+				{message.content && (
+					<div className="message-text" ref={contentRef}>
+						{/* Markdown content will be rendered here */}
+					</div>
+				)}
 				{message.status === "streaming" && isThinking && (
 					<div className="thinking-indicator">
 						<div className="thinking-status">

@@ -184,6 +184,13 @@
     border: 1px solid var(--background-modifier-border);
 }
 
+/* Tool-only messages don't need bubble styling */
+.message-bubble.tool-only .message-content-wrapper {
+    background: none;
+    border: none;
+    padding: 0;
+}
+
 /* Message Text Container */
 .message-text {
     /* Inherits text styling from parent */

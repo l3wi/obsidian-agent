@@ -24,13 +24,13 @@ export const ToolApprovalBubble: React.FC<ToolApprovalProps> = ({
 	// Format tool names for display
 	const formatToolName = (toolName: string): string => {
 		const nameMap: Record<string, string> = {
-			create_note: "Create Note",
-			modify_note: "Modify Note",
-			delete_file: "Delete File",
+			create_note: "Create",
+			modify_note: "Modify",
+			delete_file: "Delete",
 			create_folder: "Create Folder",
-			copy_file: "Copy File",
-			search_vault: "Search Vault",
-			write_file: "Write File",
+			copy_file: "Copy",
+			search_vault: "Search",
+			write_file: "Write",
 		};
 		return nameMap[toolName] || toolName;
 	};
@@ -42,9 +42,23 @@ export const ToolApprovalBubble: React.FC<ToolApprovalProps> = ({
 			</div>
 			<div className="tool-approval-list">
 				{interruptions.map((interruption) => {
-					const toolName =
-						interruption.rawItem?.name || "Unknown tool";
-					const args = interruption.rawItem?.arguments || {};
+					// Handle both manually created interruptions and SDK interruptions
+					let toolName = "Unknown tool";
+					let args: any = {};
+					
+					if (interruption.rawItem) {
+						// Manually created interruption from ChatInterface
+						toolName = interruption.rawItem.name;
+						args = interruption.rawItem.arguments || {};
+					} else if (interruption.item) {
+						// SDK interruption structure
+						toolName = interruption.item.name || "Unknown tool";
+						args = interruption.item.arguments || {};
+					} else if (interruption.name) {
+						// Direct structure
+						toolName = interruption.name;
+						args = interruption.arguments || {};
+					}
 
 					return (
 						<div

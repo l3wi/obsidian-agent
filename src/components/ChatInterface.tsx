@@ -401,62 +401,51 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 									},
 								});
 
-								// Immediately show approval bubble
-								setMessages((prev) =>
-									prev.map((msg) =>
-										msg.id === assistantMessageId
-											? {
-													...msg,
-													streamResult: {
-														interruptions:
-															pendingApprovals,
-													},
-													approvalStatus: "pending",
-												}
-											: msg,
-									),
-								);
+								// Don't update the streaming message with approval info
+								// It will be added as a separate message at the end
 							}
 						},
 					);
 
-				// Update final message with complete status and approval data
-				// Use pending approvals if we detected approval tools during streaming
+				// First, complete the assistant's response message
+				setMessages((prev) =>
+					prev.map((msg) =>
+						msg.id === assistantMessageId
+							? {
+									...msg,
+									content: result.response,
+									status: "complete",
+								}
+							: msg,
+					),
+				);
+
+				// Then, if there are tool approvals needed, create a separate message for them
 				if (hasApprovalTools && pendingApprovals.length > 0) {
-					setMessages((prev) =>
-						prev.map((msg) =>
-							msg.id === assistantMessageId
-								? {
-										...msg,
-										content: result.response,
-										status: "complete",
-										streamResult: result.stream || {
-											interruptions: pendingApprovals,
-										},
-										approvalStatus: "pending",
-									}
-								: msg,
-						),
-					);
-				} else {
-					setMessages((prev) =>
-						prev.map((msg) =>
-							msg.id === assistantMessageId
-								? {
-										...msg,
-										content: result.response,
-										status: "complete",
-										approvalRequest: result.requiresApproval
-											? result.approvalData
-											: undefined,
-										approvalStatus: result.requiresApproval
-											? "pending"
-											: undefined,
-										streamResult: result.stream,
-									}
-								: msg,
-						),
-					);
+					const toolApprovalMessage: ChatMessage = {
+						id: Date.now().toString() + "-tool-approval",
+						role: "assistant",
+						content: "", // Empty content for tool approval message
+						timestamp: Date.now(),
+						status: "complete",
+						streamResult: result.stream || {
+							interruptions: pendingApprovals,
+						},
+						approvalStatus: "pending",
+					};
+					setMessages((prev) => [...prev, toolApprovalMessage]);
+				} else if (result.requiresApproval) {
+					// Handle non-streaming approvals
+					const approvalMessage: ChatMessage = {
+						id: Date.now().toString() + "-approval",
+						role: "assistant",
+						content: "",
+						timestamp: Date.now(),
+						status: "complete",
+						approvalRequest: result.approvalData,
+						approvalStatus: "pending",
+					};
+					setMessages((prev) => [...prev, approvalMessage]);
 				}
 			} catch (error) {
 				console.error("Error processing message:", error);
@@ -537,10 +526,13 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 									message.streamResult!.interruptions.find(
 										(i: any) => i.id === id,
 									);
-								return (
-									interruption?.arguments?.path ||
-									interruption?.function?.arguments?.path
-								);
+								// Handle different interruption structures
+								const args = 
+									interruption?.rawItem?.arguments ||
+									interruption?.item?.arguments ||
+									interruption?.arguments ||
+									{};
+								return args.path;
 							})
 							.filter(Boolean);
 
