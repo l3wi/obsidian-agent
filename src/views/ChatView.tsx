@@ -33,12 +33,16 @@ export class ChatView extends ItemView {
 		container.empty();
 		container.addClass('chat-assistant-container');
 
+		// Get the active editor's file
+		const activeFile = this.app.workspace.getActiveFile();
+		const initialFiles = activeFile ? [activeFile] : [];
+
 		// Create React root and render the chat interface
 		const reactContainer = container.createDiv({ cls: 'chat-assistant-react-root' });
 		this.root = createRoot(reactContainer);
 		this.root.render(
 			<React.StrictMode>
-				<ChatInterface plugin={this.plugin} ref={this.chatInterfaceRef} />
+				<ChatInterface plugin={this.plugin} ref={this.chatInterfaceRef} initialFiles={initialFiles} />
 			</React.StrictMode>
 		);
 	}

@@ -1,5 +1,5 @@
-import { App, TFile, normalizePath } from 'obsidian';
-import { ToolResponse, VaultOperation } from '../types';
+import { App, TFile } from 'obsidian';
+import { ToolResponse, ApprovalRequest, VaultOperation } from '../types';
 
 export class NoteTool {
 	private app: App;
@@ -9,110 +9,134 @@ export class NoteTool {
 	}
 
 	/**
-	 * Create or edit a note based on the provided arguments
+	 * Execute a note command
 	 * @param args Array of arguments from the command parser
-	 * @returns Tool response with success status and any approval requirements
+	 * @returns Tool response with the result
 	 */
 	async execute(args: string[]): Promise<ToolResponse> {
-		if (args.length === 0) {
+		if (args.length < 2) {
 			return {
 				success: false,
-				message: 'Please provide a note title. Usage: /note <title> [content]'
+				message: 'Invalid command. Usage: /note <create|update> <path> [content]'
 			};
 		}
 
-		// Parse title and content
-		const title = args[0];
-		const content = args.slice(1).join(' ') || '';
+		const operationType = args[0];
+		const path = args[1];
+		const content = args.slice(2).join(' ');
 
-		// Normalize the file path
-		const fileName = `${title}.md`;
-		const filePath = normalizePath(fileName);
-
-		try {
-			// Check if file already exists
-			const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+		switch (operationType) {
+			case 'create':
+				return this.prepareCreateNote(path, content);
 			
-			if (existingFile && existingFile instanceof TFile) {
-				// File exists - prepare edit operation
-				const currentContent = await this.app.vault.read(existingFile);
-				const newContent = content || currentContent;
-
-				const operation: VaultOperation = {
-					type: 'update',
-					path: filePath,
-					content: newContent
-				};
-
+			case 'update':
+				return this.prepareUpdateNote(path, content);
+			
+			default:
 				return {
-					success: true,
-					message: `Ready to update note: ${title}`,
-					requiresApproval: true,
-					approvalData: {
-						id: Date.now().toString(),
-						type: 'edit',
-						filePath,
-						content: newContent,
-						oldContent: currentContent,
-						description: `Update existing note "${title}"`
-					},
-					data: operation
+					success: false,
+					message: `Unknown note operation: ${operationType}`
 				};
-			} else {
-				// File doesn't exist - prepare create operation
-				const initialContent = content || `# ${title}\n\n`;
+		}
+	}
 
-				const operation: VaultOperation = {
-					type: 'create',
-					path: filePath,
-					content: initialContent
-				};
+	/**
+	 * Prepare to create a new note, requesting approval
+	 * @param path The path for the new note
+	 * @param content The content of the new note
+	 * @returns Tool response with approval request
+	 */
+	private prepareCreateNote(path: string, content: string): ToolResponse {
+		const operation: VaultOperation = {
+			type: 'create',
+			path,
+			content
+		};
 
-				return {
-					success: true,
-					message: `Ready to create note: ${title}`,
-					requiresApproval: true,
-					approvalData: {
-						id: Date.now().toString(),
-						type: 'create',
-						filePath,
-						content: initialContent,
-						description: `Create new note "${title}"`
-					},
-					data: operation
-				};
-			}
-		} catch (error) {
+		const approvalRequest: ApprovalRequest = {
+			id: `note-create-${Date.now()}`,
+			type: 'create',
+			filePath: path,
+			content: content,
+			description: `Create a new note at "${path}" with the provided content.`
+		};
+
+		return {
+			success: true,
+			message: 'Requesting approval to create a new note.',
+			requiresApproval: true,
+			approvalData: approvalRequest,
+			data: operation
+		};
+	}
+
+	/**
+	 * Prepare to update an existing note, requesting approval
+	 * @param path The path of the note to update
+	 * @param newContent The new content for the note
+	 * @returns Tool response with approval request
+	 */
+	private async prepareUpdateNote(path: string, newContent: string): Promise<ToolResponse> {
+		const file = this.app.vault.getAbstractFileByPath(path);
+
+		if (!file || !(file instanceof TFile)) {
 			return {
 				success: false,
-				message: `Error preparing note operation: ${error.message}`
+				message: `Note not found at path: ${path}`
 			};
 		}
+
+		const oldContent = await this.app.vault.read(file);
+
+		const operation: VaultOperation = {
+			type: 'update',
+			path,
+			content: newContent
+		};
+
+		const approvalRequest: ApprovalRequest = {
+			id: `note-update-${Date.now()}`,
+			type: 'edit',
+			filePath: path,
+			content: newContent,
+			oldContent: oldContent,
+			description: `Update the note at "${path}" with the new content.`
+		};
+
+		return {
+			success: true,
+			message: 'Requesting approval to update an existing note.',
+			requiresApproval: true,
+			approvalData: approvalRequest,
+			data: operation
+		};
 	}
 
 	/**
 	 * Execute an approved vault operation
 	 * @param operation The vault operation to execute
-	 * @returns Success status
+	 * @returns True if the operation was successful
 	 */
 	async executeApprovedOperation(operation: VaultOperation): Promise<boolean> {
 		try {
 			switch (operation.type) {
 				case 'create':
 					await this.app.vault.create(operation.path, operation.content || '');
-					break;
+					return true;
+				
 				case 'update':
 					const file = this.app.vault.getAbstractFileByPath(operation.path);
-					if (file instanceof TFile) {
+					if (file && file instanceof TFile) {
 						await this.app.vault.modify(file, operation.content || '');
+						return true;
 					}
-					break;
+					return false;
+				
 				default:
 					return false;
 			}
-			return true;
 		} catch (error) {
-			console.error('Error executing vault operation:', error);
+			console.error(`Error executing approved operation:`, error);
 			return false;
 		}
 	}

@@ -1,21 +1,18 @@
 import { App } from 'obsidian';
 import { CommandParser } from '../commands/CommandParser';
 import { NoteTool } from '../tools/NoteTool';
-import { SearchTool } from '../tools/SearchTool';
 import { ApprovalManager } from '../managers/ApprovalManager';
 import { SlashCommand, ToolResponse, VaultOperation } from '../types';
 
 export class ToolRouter {
 	private app: App;
 	private noteTool: NoteTool;
-	private searchTool: SearchTool;
 	private approvalManager: ApprovalManager;
 
 	constructor(app: App, approvalManager: ApprovalManager) {
 		this.app = app;
 		this.approvalManager = approvalManager;
 		this.noteTool = new NoteTool(app);
-		this.searchTool = new SearchTool(app);
 	}
 
 	/**
@@ -100,7 +97,20 @@ export class ToolRouter {
 	 * @returns Tool response
 	 */
 	private async handleSearchCommand(command: SlashCommand): Promise<ToolResponse> {
-		return await this.searchTool.execute(command.args);
+		const query = command.args.join(' ');
+		// @ts-ignore
+		const searchPlugin = this.app.internalPlugins.plugins.search;
+		if (!searchPlugin.enabled) {
+			return {
+				success: false,
+				message: 'Search plugin is not enabled',
+			};
+		}
+		await searchPlugin.instance.openGlobalSearch(query);
+		return {
+			success: true,
+			message: `Searching for "${query}"...`,
+		};
 	}
 
 	/**
@@ -129,18 +139,18 @@ export class ToolRouter {
 		// Get general help
 		const commands = CommandParser.getAllCommands();
 		const helpLines = ['Available commands:\n'];
-		
-		commands.forEach(cmd => {
-			const helpText = CommandParser.getCommandHelp(cmd.command);
-			if (helpText) {
-				helpLines.push(helpText);
-			}
-		});
+        
+        commands.forEach(cmd => {
+            const helpText = CommandParser.getCommandHelp(cmd.command);
+            if (helpText) {
+                helpLines.push(helpText);
+            }
+        });
 
-		return {
-			success: true,
-			message: helpLines.join('\n')
-		};
+        return {
+            success: true,
+            message: helpLines.join('\n')
+        };
 	}
 
 	/**
