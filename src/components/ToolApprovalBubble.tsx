@@ -13,6 +13,8 @@ export const ToolApprovalBubble: React.FC<ToolApprovalProps> = ({
 	onRejectAll,
 	showStatus,
 }) => {
+	// Debug log to see the structure
+	console.log('ToolApprovalBubble interruptions:', interruptions);
 	const handleApproveAll = () => {
 		const allApproved = new Map<string, boolean>();
 		interruptions.forEach((interruption) => {
@@ -46,7 +48,24 @@ export const ToolApprovalBubble: React.FC<ToolApprovalProps> = ({
 					let toolName = "Unknown tool";
 					let args: any = {};
 					
-					if (interruption.rawItem) {
+					// Log to understand structure
+					console.log('Processing interruption:', interruption);
+					
+					// Extract tool name and arguments based on the structure
+					if (interruption.type === "tool_approval_item" && interruption.rawItem) {
+						// New SDK structure with nested rawItem
+						toolName = interruption.rawItem.name;
+						const rawArgs = interruption.rawItem.arguments;
+						if (typeof rawArgs === 'string') {
+							try {
+								args = JSON.parse(rawArgs);
+							} catch {
+								args = { raw: rawArgs };
+							}
+						} else {
+							args = rawArgs || {};
+						}
+					} else if (interruption.rawItem) {
 						// Manually created interruption from ChatInterface
 						toolName = interruption.rawItem.name;
 						// Parse arguments if they're a JSON string
@@ -88,9 +107,15 @@ export const ToolApprovalBubble: React.FC<ToolApprovalProps> = ({
 						}
 					}
 
+					// Get the ID for the key
+					const interruptionId = interruption.id || 
+						interruption.rawItem?.id || 
+						interruption.rawItem?.callId || 
+						Math.random().toString();
+
 					return (
 						<div
-							key={interruption.id}
+							key={interruptionId}
 							className="tool-approval-item"
 						>
 							<div className="tool-approval-info">

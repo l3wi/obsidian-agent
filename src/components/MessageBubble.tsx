@@ -140,6 +140,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 		message.approvalRequest
 	);
 
+	// Don't render anything if there's no content and no approval info
+	if (!message.content && !message.streamResult?.interruptions?.length && !message.approvalRequest) {
+		return null;
+	}
+
 	return (
 		<div className={`message-bubble message-${message.role} ${isToolOnlyMessage ? 'tool-only' : ''}`}>
 			<div className="message-content-wrapper">

@@ -448,8 +448,11 @@
 /* Tool Approval Bubble */
 .tool-approval-bubble {
     margin-top: 10px;
-    padding: 8px 0;
+    padding: 12px;
     width: 100%;
+    background-color: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
 }
 
 .tool-approval-header {

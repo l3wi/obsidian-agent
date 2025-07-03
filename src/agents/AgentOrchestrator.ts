@@ -323,17 +323,10 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 
 			// Process the stream events
 			for await (const event of streamResult) {
-				console.log("[AgentOrchestrator] Stream event:", {
-					type: event.type,
-					name: "name" in event ? event.name : undefined,
-				});
+				// Removed verbose stream logging
 
 				switch (event.type) {
 					case "raw_model_stream_event": {
-						console.log(
-							"[AgentOrchestrator] Raw model stream event data:",
-							event.data
-						);
 						const data = event.data;
 						if (
 							"type" in data &&
@@ -348,13 +341,6 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 						if (event.name === "tool_called" && onToolCall) {
 							const item = event.item;
 							if ("name" in item && "arguments" in item) {
-								console.log(
-									"[AgentOrchestrator] Tool called:",
-									{
-										tool: (item as any).name,
-										args: (item as any).arguments,
-									}
-								);
 								onToolCall(
 									(item as any).name,
 									(item as any).arguments
