@@ -263,15 +263,45 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 				status: "complete",
 			};
 
-			// Create a system message with the context
+			// Build comprehensive context information
+			const contextParts: string[] = [];
+
+			// Add recently opened files
+			const recentFiles = plugin.app.workspace.getLastOpenFiles();
+			if (recentFiles.length > 0) {
+				const recentFileNames = recentFiles
+					.slice(0, 10) // Limit to 10 most recent
+					.map(path => {
+						const name = path.split('/').pop() || path;
+						return `- ${name}`;
+					})
+					.join('\n');
+				contextParts.push(`Recently opened files:\n${recentFileNames}`);
+			}
+
+			// Add current active file info
+			const activeFile = plugin.app.workspace.getActiveFile();
+			if (activeFile) {
+				// Get folder path to root
+				const folderPath = activeFile.parent?.path || '/';
+				contextParts.push(`Current file: ${activeFile.name}\nFolder path: ${folderPath}`);
+			}
+
+			// Add context files
+			if (contextFiles.length > 0) {
+				const contextFilesList = contextFiles
+					.map((f) => `- ${f.path}`)
+					.join("\n");
+				contextParts.push(`Files provided as context:\n${contextFilesList}`);
+			}
+
+			// Create a system message with all context
 			const contextMessage: ChatMessage | null =
-				contextFiles.length > 0
+				contextParts.length > 0
 					? {
 							id: (Date.now() - 1).toString(),
 							role: "system",
-							content: `The user has provided the following files as context:\n\n${contextFiles
-								.map((f) => `- ${f.path}`)
-								.join("\n")}`,
+							content: contextParts.join('\n\n'),
 							timestamp: Date.now(),
 							status: "complete",
 						}

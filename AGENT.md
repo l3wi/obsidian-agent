@@ -124,3 +124,7 @@ Alternatively, use the `--all_files` flag to include everything in the current p
 -   **Verify caching strategy:** `gemini -p "@src/ @lib/ Is Redis caching implemented? List cache-related functions"`
 -   **Check security measures:** `gemini -p "@src/ @api/ Are SQL injection protections implemented? Show input sanitization"`
 -   **Verify test coverage:** `gemini -p "@src/payment/ @tests/ Is the payment module fully tested? List test cases"`
+
+### Project Architecture Investigation Process
+
+- **Use the /docs/ARCHITECTURE.md file to understand the program layout. (if you find its out of sync from reality, stop and update it, then continue)**
