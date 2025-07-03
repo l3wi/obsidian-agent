@@ -478,11 +478,16 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 			messageId: string,
 			approvals: Map<string, boolean>,
 		) => {
-			// Update the message status
+			// Update the message status while preserving streamResult
 			setMessages((prev) =>
 				prev.map((msg) =>
 					msg.id === messageId
-						? { ...msg, approvalStatus: "approved" as const }
+						? { 
+							...msg, 
+							approvalStatus: "approved" as const,
+							// Preserve the streamResult to show in the approved state
+							streamResult: msg.streamResult 
+						}
 						: msg,
 				),
 			);
@@ -631,11 +636,16 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 		};
 
 		const handleReject = async (messageId: string) => {
-			// Update the message status
+			// Update the message status while preserving streamResult
 			setMessages((prev) =>
 				prev.map((msg) =>
 					msg.id === messageId
-						? { ...msg, approvalStatus: "rejected" as const }
+						? { 
+							...msg, 
+							approvalStatus: "rejected" as const,
+							// Preserve the streamResult to show in the rejected state
+							streamResult: msg.streamResult
+						}
 						: msg,
 				),
 			);
