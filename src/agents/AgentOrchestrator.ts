@@ -92,11 +92,9 @@ export class AgentOrchestrator {
 		this.toolRegistry.register(new CreateFolderTool());
 		this.toolRegistry.register(new CopyFileTool());
 		
-		// Register web and analysis tools
-		this.toolRegistry.register(new WebSearchTool());
-		this.toolRegistry.register(new CodeInterpreterTool());
+		// Note: Web and code interpreter tools are OpenAI SDK tools that are added directly
 
-		// Initialize the conductor agent with OpenAI hosted tools and vault tools
+		// Initialize the conductor agent with dynamic tools from registry
 		this.conductor = new Agent({
 			name: "Conductor",
 			model: this.model,
@@ -144,7 +142,11 @@ Your tools:
 7. delete_file: Delete files or folders
 
 Remember: ALWAYS analyze context before acting. The user's request likely relates to something already visible or recently accessed.`,
-			tools: this.toolRegistry.getEnabledAgentTools(),
+			tools: [
+				...this.toolRegistry.getEnabledAgentTools(),
+				WebSearchTool.create(),
+				CodeInterpreterTool.create()
+			],
 			modelSettings: {
 				temperature: 0.7,
 				parallelToolCalls: true,
@@ -566,7 +568,11 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 			name: this.conductor.name,
 			model: this.conductor.model,
 			instructions: this.conductor.instructions,
-			tools: this.toolRegistry.getEnabledAgentTools(),
+			tools: [
+				...this.toolRegistry.getEnabledAgentTools(),
+				WebSearchTool.create(),
+				CodeInterpreterTool.create()
+			],
 			modelSettings: this.conductor.modelSettings,
 		});
 	}

@@ -553,18 +553,13 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 					};
 					addMessage(resultMessage);
 				} catch (error) {
-					// Fallback to approval manager
-					const result =
-						await approvalManager.current.executeApprovedOperation(
-							message.approvalRequest,
-						);
-
+					// Handle error
 					const resultMessage: ChatMessage = {
 						id: Date.now().toString(),
 						role: "assistant",
-						content: result.message,
+						content: `Error handling approval: ${error.message}`,
 						timestamp: Date.now(),
-						status: result.success ? "complete" : "error",
+						status: "error",
 					};
 					addMessage(resultMessage);
 				}
