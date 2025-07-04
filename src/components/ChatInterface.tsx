@@ -5,7 +5,7 @@ import {
 	forwardRef,
 	useImperativeHandle,
 } from "react";
-import { ChatMessage, ToolResponse } from "../types";
+import { ChatMessage, ToolResponse, MessageSegment } from "../types";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 
@@ -364,12 +364,44 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 
 				// Complete the assistant's response message with approval info if needed
 				if (result.stream && result.stream.interruptions && result.stream.interruptions.length > 0) {
-					// Update the existing message with the stream result and approval status
+					// Get current content before tool call
+					const currentMessage = messages.find(m => m.id === assistantMessageId);
+					const preservedContent = currentMessage?.content || '';
+					
+					// Create segments for the message
+					const segments: MessageSegment[] = [];
+					
+					// Add initial text segment if there's content
+					if (preservedContent) {
+						segments.push({
+							id: `${assistantMessageId}-text-1`,
+							type: 'text',
+							content: preservedContent,
+							timestamp: Date.now(),
+						});
+					}
+					
+					// Add tool approval segment
+					segments.push({
+						id: `${assistantMessageId}-approval-1`,
+						type: 'tool-approval',
+						content: '', // Content will be rendered by the approval component
+						timestamp: Date.now(),
+						metadata: {
+							streamResult: result.stream,
+							interruptions: result.stream.interruptions,
+							approvalStatus: 'pending'
+						}
+					});
+					
+					// Update the existing message with segments and approval status
 					updateMessage(assistantMessageId, {
 						content: result.response,
 						status: "complete",
 						streamResult: result.stream,
 						approvalStatus: "pending",
+						segments: segments,
+						preservedContent: preservedContent
 					});
 				} else {
 					// Just complete the streaming message normally
@@ -395,89 +427,165 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 			messageId: string,
 			approvals: Map<string, boolean>,
 		) => {
-			// Update the message status while preserving streamResult
-			updateMessage(messageId, { 
-				approvalStatus: "approved" as const,
-			});
-
 			// Find the message with the stream result
 			const message = messages.find((m) => m.id === messageId);
-			if (message?.streamResult && agentOrchestrator.current) {
-				setProcessing(true);
-				try {
-					// Create a new message for the resumed response
-					const resumedMessageId = Date.now().toString();
-					const resumedMessage: ChatMessage = {
-						id: resumedMessageId,
-						role: "assistant",
-						content: "Continuing...",
-						timestamp: Date.now(),
-						status: "streaming",
-					};
-					startStreaming(resumedMessageId, message.streamResult);
+			if (!message?.streamResult || !agentOrchestrator.current) return;
 
-					// Handle the approval with streaming
-					const result =
-						await agentOrchestrator.current.handleStreamApproval(
-							message.streamResult,
-							approvals,
-							(chunk) => {
-								// Update message content as chunks arrive
-								updateStreamingContent(resumedMessageId, chunk);
-							},
+			// Update the approval status in the segment
+			const updatedSegments = [...(message.segments || [])];
+			const approvalSegmentIndex = updatedSegments.findIndex(
+				s => s.type === 'tool-approval' && s.metadata?.approvalStatus === 'pending'
+			);
+			
+			if (approvalSegmentIndex !== -1) {
+				updatedSegments[approvalSegmentIndex] = {
+					...updatedSegments[approvalSegmentIndex],
+					metadata: {
+						...updatedSegments[approvalSegmentIndex].metadata,
+						approvalStatus: "approved"
+					}
+				};
+			}
+
+			// Update the message with approved status
+			updateMessage(messageId, { 
+				approvalStatus: "approved" as const,
+				segments: updatedSegments
+			});
+
+			setProcessing(true);
+			try {
+				// Create a continuation segment for the resumed response
+				const continuationSegmentId = `${messageId}-continuation-${Date.now()}`;
+				const continuationSegment: MessageSegment = {
+					id: continuationSegmentId,
+					type: 'continuation',
+					content: '',
+					timestamp: Date.now(),
+				};
+
+				// Add the continuation segment
+				const segmentsWithContinuation = [...updatedSegments, continuationSegment];
+				updateMessage(messageId, {
+					segments: segmentsWithContinuation,
+					status: "streaming"
+				});
+
+				// Buffer for accumulating chunks
+				let continuationContent = '';
+
+				// Handle the approval with streaming
+				const result =
+					await agentOrchestrator.current.handleStreamApproval(
+						message.streamResult,
+						approvals,
+						(chunk) => {
+							// Accumulate chunks
+							continuationContent += chunk;
+							
+							// Update the continuation segment content
+							const updatedSegments = segmentsWithContinuation.map(seg => 
+								seg.id === continuationSegmentId 
+									? { ...seg, content: continuationContent }
+									: seg
+							);
+							
+							updateMessage(messageId, {
+								segments: updatedSegments,
+								content: message.preservedContent 
+									? message.preservedContent + '\n\n' + continuationContent 
+									: continuationContent
+							});
+						},
+					);
+
+				// Refresh context if files were modified
+				if (message.streamResult) {
+					const modifiedFiles = Array.from(approvals.keys())
+						.map((id) => {
+							const interruption =
+								message.streamResult!.interruptions.find(
+									(i: any) => i.id === id,
+								);
+							// Handle different interruption structures
+							const args = 
+								interruption?.rawItem?.arguments ||
+								interruption?.item?.arguments ||
+								interruption?.arguments ||
+								{};
+							return args.path;
+						})
+						.filter(Boolean);
+
+					if (modifiedFiles.length > 0) {
+						const newFiles = await Promise.all(
+							modifiedFiles.map(
+								(path: string) =>
+									plugin.app.vault.getAbstractFileByPath(
+										path,
+									) as TFile,
+							),
 						);
-
-					// Refresh context if files were modified
-					if (message.streamResult) {
-						const modifiedFiles = Array.from(approvals.keys())
-							.map((id) => {
-								const interruption =
-									message.streamResult!.interruptions.find(
-										(i: any) => i.id === id,
-									);
-								// Handle different interruption structures
-								const args = 
-									interruption?.rawItem?.arguments ||
-									interruption?.item?.arguments ||
-									interruption?.arguments ||
-									{};
-								return args.path;
-							})
-							.filter(Boolean);
-
-						if (modifiedFiles.length > 0) {
-							const newFiles = await Promise.all(
-								modifiedFiles.map(
-									(path: string) =>
-										plugin.app.vault.getAbstractFileByPath(
-											path,
-										) as TFile,
-								),
-							);
-							const filteredFiles = contextFiles.filter(
-								(f) => !modifiedFiles.includes(f.path)
-							);
-							setContextFiles([...filteredFiles, ...newFiles]);
-						}
+						const filteredFiles = contextFiles.filter(
+							(f) => !modifiedFiles.includes(f.path)
+						);
+						setContextFiles([...filteredFiles, ...newFiles]);
 					}
-
-					// Update final message
-					completeStreaming(resumedMessageId, result.response);
-					
-					// Add approval message if needed
-					if (result.requiresApproval) {
-						updateMessage(resumedMessageId, {
-							approvalRequest: result.approvalData,
-							approvalStatus: "pending",
-							streamResult: result.stream,
-						});
-					}
-				} catch (error) {
-					console.error("Error handling tool approval:", error);
-					new Notice("Error processing tool approval");
-				} finally {
-					setProcessing(false);
 				}
+
+				// Check if there are more interruptions
+				if (result.stream && result.stream.interruptions && result.stream.interruptions.length > 0) {
+					// Add another approval segment
+					const newApprovalSegment: MessageSegment = {
+						id: `${messageId}-approval-${Date.now()}`,
+						type: 'tool-approval',
+						content: '',
+						timestamp: Date.now(),
+						metadata: {
+							streamResult: result.stream,
+							interruptions: result.stream.interruptions,
+							approvalStatus: 'pending'
+						}
+					};
+					
+					const finalSegments = [...segmentsWithContinuation, newApprovalSegment];
+					
+					updateMessage(messageId, {
+						segments: finalSegments,
+						status: "complete",
+						approvalStatus: "pending",
+						streamResult: result.stream,
+						content: message.preservedContent 
+							? message.preservedContent + '\n\n' + result.response 
+							: result.response
+					});
+				} else {
+					// Final update - mark as complete
+					updateMessage(messageId, {
+						status: "complete",
+						content: message.preservedContent 
+							? message.preservedContent + '\n\n' + result.response 
+							: result.response
+					});
+				}
+			} catch (error) {
+				console.error("Error handling tool approval:", error);
+				new Notice("Error processing tool approval");
+				
+				// Add error segment
+				const errorSegment: MessageSegment = {
+					id: `${messageId}-error-${Date.now()}`,
+					type: 'text',
+					content: `Error: ${error.message}`,
+					timestamp: Date.now(),
+				};
+				
+				updateMessage(messageId, {
+					segments: [...updatedSegments, errorSegment],
+					status: "error"
+				});
+			} finally {
+				setProcessing(false);
 			}
 		};
 
@@ -518,18 +626,40 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 		};
 
 		const handleReject = async (messageId: string) => {
-			// Update the message status while preserving streamResult
-			updateMessage(messageId, { approvalStatus: "rejected" as const });
+			// Find the message
+			const message = messages.find((m) => m.id === messageId);
+			if (!message) return;
 
-			// Add a follow-up message
-			const resultMessage: ChatMessage = {
-				id: Date.now().toString(),
-				role: "assistant",
-				content: "Operation cancelled.",
+			// Update the approval status in the segment
+			const updatedSegments = [...(message.segments || [])];
+			const approvalSegmentIndex = updatedSegments.findIndex(
+				s => s.type === 'tool-approval' && s.metadata?.approvalStatus === 'pending'
+			);
+			
+			if (approvalSegmentIndex !== -1) {
+				updatedSegments[approvalSegmentIndex] = {
+					...updatedSegments[approvalSegmentIndex],
+					metadata: {
+						...updatedSegments[approvalSegmentIndex].metadata,
+						approvalStatus: "rejected"
+					}
+				};
+			}
+
+			// Add a rejection notice segment
+			const rejectionSegment: MessageSegment = {
+				id: `${messageId}-rejection-${Date.now()}`,
+				type: 'text',
+				content: 'Operation cancelled.',
 				timestamp: Date.now(),
-				status: "complete",
 			};
-			addMessage(resultMessage);
+
+			// Update the message with rejected status and segments
+			updateMessage(messageId, { 
+				approvalStatus: "rejected" as const,
+				segments: [...updatedSegments, rejectionSegment],
+				status: "complete"
+			});
 		};
 
 		const handleClearChat = () => {

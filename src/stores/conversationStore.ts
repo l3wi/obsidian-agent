@@ -20,7 +20,7 @@ interface ConversationState {
 export const useConversationStore = create<ConversationState>()(
   devtools(
     persist(
-      (set) => ({
+      (set, get) => ({
         messages: [],
         activeStreamId: null,
         isProcessing: false,

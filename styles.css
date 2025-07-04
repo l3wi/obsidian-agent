@@ -882,3 +882,72 @@
 .context-badge-remove:hover {
 	color: var(--text-normal);
 }
+
+/* Message Segments */
+.message-segments {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	width: 100%;
+}
+
+.message-segment {
+	position: relative;
+	width: 100%;
+}
+
+/* Text segments */
+.message-segment.text-segment {
+	/* Text segments inherit styling from parent */
+}
+
+/* Tool approval segments */
+.message-segment.tool-approval-segment {
+	margin: 8px 0;
+	padding: 12px;
+	background-color: var(--background-primary-alt);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+}
+
+/* Continuation segments */
+.message-segment.continuation::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: -8px;
+	height: 1px;
+	width: 100%;
+	background: var(--background-modifier-border);
+}
+
+/* Segment content */
+.segment-content {
+	width: 100%;
+}
+
+.segment-content p {
+	margin: 0 0 0.5em 0;
+}
+
+.segment-content p:last-child {
+	margin-bottom: 0;
+}
+
+/* Visual separator between different segment types */
+.message-segment + .message-segment.tool-approval-segment {
+	margin-top: 16px;
+}
+
+.message-segment.tool-approval-segment + .message-segment {
+	margin-top: 16px;
+}
+
+/* Approved/Rejected tool segments */
+.tool-approval-segment .enhanced-tool-approval.approved {
+	opacity: 0.8;
+}
+
+.tool-approval-segment .enhanced-tool-approval.rejected {
+	opacity: 0.6;
+}

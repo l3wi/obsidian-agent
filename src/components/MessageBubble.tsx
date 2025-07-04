@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useState, useEffect, useRef } from "react";
-import { ChatMessage } from "../types";
+import { ChatMessage, MessageSegment } from "../types";
 import { MarkdownRenderer, Component } from "obsidian";
 import { EnhancedToolApproval } from "./EnhancedToolApproval";
 
@@ -110,28 +110,35 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 		}
 	};
 
+	// Render markdown content for a given text
+	const renderMarkdownContent = (text: string, targetElement: HTMLElement) => {
+		const tempComponent = new Component();
+		targetElement.innerHTML = "";
+		MarkdownRenderer.renderMarkdown(
+			text,
+			targetElement,
+			"",
+			tempComponent
+		);
+		return tempComponent;
+	};
+
 	useEffect(() => {
-		if (contentRef.current) {
-			// Clear existing content
-			contentRef.current.innerHTML = "";
+		const components: Component[] = [];
 
-			// Create a temporary component for rendering
-			const tempComponent = new Component();
-
-			// Render markdown
-			MarkdownRenderer.renderMarkdown(
-				message.content,
-				contentRef.current,
-				"",
-				tempComponent
-			);
-
-			// Cleanup
-			return () => {
-				tempComponent.unload();
-			};
+		// Render main content if no segments
+		if (!message.segments || message.segments.length === 0) {
+			if (contentRef.current && message.content) {
+				const component = renderMarkdownContent(message.content, contentRef.current);
+				components.push(component);
+			}
 		}
-	}, [message.content]);
+
+		// Cleanup
+		return () => {
+			components.forEach(c => c.unload());
+		};
+	}, [message.content, message.segments]);
 
 	// Check if this is a tool-only message (no content, just approvals)
 	const isToolOnlyMessage = !message.content && (
@@ -144,14 +151,66 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 		return null;
 	}
 
+	// Render a single segment
+	const renderSegment = (segment: MessageSegment) => {
+		if (segment.type === 'text' || segment.type === 'continuation') {
+			return (
+				<div key={segment.id} className="message-segment text-segment">
+					<div 
+						className="segment-content" 
+						ref={(el) => {
+							if (el && segment.content) {
+								renderMarkdownContent(segment.content, el);
+							}
+						}}
+					/>
+				</div>
+			);
+		} else if (segment.type === 'tool-approval' && segment.metadata) {
+			const isPending = segment.metadata.approvalStatus === 'pending';
+			const isApproved = segment.metadata.approvalStatus === 'approved';
+			const isRejected = segment.metadata.approvalStatus === 'rejected';
+			
+			return (
+				<div key={segment.id} className="message-segment tool-approval-segment">
+					{segment.metadata.interruptions && (
+						<EnhancedToolApproval
+							interruptions={segment.metadata.interruptions}
+							onApprove={isPending && onToolApproval ? 
+								(approvals) => onToolApproval(message.id, approvals) : 
+								() => {}
+							}
+							onRejectAll={isPending && onReject ? 
+								() => onReject(message.id) : 
+								() => {}
+							}
+							showStatus={isApproved ? 'approved' : isRejected ? 'rejected' : undefined}
+						/>
+					)}
+				</div>
+			);
+		}
+		return null;
+	};
+
 	return (
 		<div className={`message-bubble message-${message.role} ${isToolOnlyMessage ? 'tool-only' : ''}`}>
 			<div className="message-content-wrapper">
-				{message.content && (
-					<div className="message-text" ref={contentRef}>
-						{/* Markdown content will be rendered here */}
+				{/* Render segments if available */}
+				{message.segments && message.segments.length > 0 ? (
+					<div className="message-segments">
+						{message.segments.map(segment => renderSegment(segment))}
 					</div>
+				) : (
+					/* Otherwise render content normally */
+					message.content && (
+						<div className="message-text" ref={contentRef}>
+							{/* Markdown content will be rendered here */}
+						</div>
+					)
 				)}
+				
+				{/* Show streaming indicator */}
 				{message.status === "streaming" && isThinking && (
 					<div className="thinking-indicator">
 						<div className="thinking-status">
@@ -166,7 +225,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 						)}
 					</div>
 				)}
-				{message.streamResult?.interruptions &&
+				
+				{/* Legacy approval handling for messages without segments */}
+				{!message.segments && message.streamResult?.interruptions &&
 					message.streamResult.interruptions.length > 0 &&
 					message.approvalStatus === "pending" &&
 					onToolApproval && (
@@ -176,17 +237,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 								onToolApproval(message.id, approvals)
 							}
 							onRejectAll={() => onReject && onReject(message.id)}
-						/>
-					)}
-				{message.approvalStatus &&
-					message.approvalStatus !== "pending" &&
-					message.streamResult?.interruptions &&
-					message.streamResult.interruptions.length > 0 && (
-						<EnhancedToolApproval
-							interruptions={message.streamResult.interruptions}
-							onApprove={() => {}} // No-op for display only
-							onRejectAll={() => {}} // No-op for display only
-							showStatus={message.approvalStatus}
 						/>
 					)}
 			</div>
