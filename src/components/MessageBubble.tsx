@@ -1,7 +1,6 @@
 import * as React from "react";
 import { useState, useEffect, useRef } from "react";
 import { ChatMessage } from "../types";
-import { ApprovalBubble } from "./ApprovalBubble";
 import { MarkdownRenderer, Component } from "obsidian";
 import { EnhancedToolApproval } from "./EnhancedToolApproval";
 
@@ -177,19 +176,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 								onToolApproval(message.id, approvals)
 							}
 							onRejectAll={() => onReject && onReject(message.id)}
-						/>
-					)}
-				{message.approvalRequest &&
-					message.approvalStatus === "pending" &&
-					onApprove &&
-					onReject &&
-					(!message.streamResult ||
-						!message.streamResult.interruptions) && (
-						<ApprovalBubble
-							message={message.approvalRequest.description}
-							details={message.approvalRequest.content}
-							onApprove={() => onApprove(message.id)}
-							onReject={() => onReject(message.id)}
 						/>
 					)}
 				{message.approvalStatus &&

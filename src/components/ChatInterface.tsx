@@ -114,20 +114,42 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 							};
 					}
 
-					const assistantMessage: ChatMessage = {
-						id: (Date.now() + 1).toString(),
-						role: "assistant",
-						content: result.message,
-						timestamp: Date.now(),
-						status: result.success ? "complete" : "error",
-						error: result.success ? undefined : result.message,
-						approvalRequest: result.requiresApproval
-							? result.approvalData
-							: undefined,
-						approvalStatus: result.requiresApproval
-							? "pending"
-							: undefined,
-					};
+					let assistantMessage: ChatMessage;
+					
+					if (result.requiresApproval && result.approvalData) {
+						// Convert to tool approval format
+						const approvalInterruptions = [{
+							id: Date.now().toString() + Math.random(),
+							rawItem: {
+								name: "custom_action",
+								arguments: {
+									description: result.approvalData.description || "Custom action",
+									content: result.approvalData.content || result.approvalData
+								}
+							}
+						}];
+						
+						assistantMessage = {
+							id: (Date.now() + 1).toString(),
+							role: "assistant",
+							content: result.message,
+							timestamp: Date.now(),
+							status: "complete",
+							streamResult: {
+								interruptions: approvalInterruptions,
+							},
+							approvalStatus: "pending",
+						};
+					} else {
+						assistantMessage = {
+							id: (Date.now() + 1).toString(),
+							role: "assistant",
+							content: result.message,
+							timestamp: Date.now(),
+							status: result.success ? "complete" : "error",
+							error: result.success ? undefined : result.message,
+						};
+					}
 					addMessage(assistantMessage);
 				} catch (error) {
 					console.error("Error processing command:", error);
@@ -411,15 +433,28 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 						approvalStatus: "pending",
 					};
 					addMessage(toolApprovalMessage);
-				} else if (result.requiresApproval) {
-					// Handle non-streaming approvals
+				} else if (result.requiresApproval && result.approvalData) {
+					// Convert non-streaming approvals to tool approval format
+					const approvalInterruptions = [{
+						id: Date.now().toString() + Math.random(),
+						rawItem: {
+							name: "custom_action",
+							arguments: {
+								description: result.approvalData.description || "Custom action",
+								content: result.approvalData.content || result.approvalData
+							}
+						}
+					}];
+					
 					const approvalMessage: ChatMessage = {
 						id: Date.now().toString() + "-approval",
 						role: "assistant",
 						content: "I need your approval to perform the following action:",
 						timestamp: Date.now(),
 						status: "complete",
-						approvalRequest: result.approvalData,
+						streamResult: {
+							interruptions: approvalInterruptions,
+						},
 						approvalStatus: "pending",
 					};
 					addMessage(approvalMessage);
