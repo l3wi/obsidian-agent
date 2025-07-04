@@ -94,6 +94,23 @@ export class AgentOrchestrator {
 		
 		// Note: Web and code interpreter tools are OpenAI SDK tools that are added directly
 
+		// Get all tools for the agent
+		const registryTools = this.toolRegistry.getEnabledAgentTools() || [];
+		const webSearchTool = WebSearchTool.create();
+		const codeInterpreterTool = CodeInterpreterTool.create();
+		
+		// Ensure tools is an array
+		const allTools = [
+			...registryTools,
+			webSearchTool,
+			codeInterpreterTool
+		].filter(tool => tool !== undefined && tool !== null);
+		
+		console.log("[AgentOrchestrator] Registry tools:", registryTools);
+		console.log("[AgentOrchestrator] Web search tool:", webSearchTool);
+		console.log("[AgentOrchestrator] Code interpreter tool:", codeInterpreterTool);
+		console.log("[AgentOrchestrator] All tools count:", allTools.length);
+
 		// Initialize the conductor agent with dynamic tools from registry
 		this.conductor = new Agent({
 			name: "Conductor",
@@ -142,11 +159,7 @@ Your tools:
 7. delete_file: Delete files or folders
 
 Remember: ALWAYS analyze context before acting. The user's request likely relates to something already visible or recently accessed.`,
-			tools: [
-				...this.toolRegistry.getEnabledAgentTools(),
-				WebSearchTool.create(),
-				CodeInterpreterTool.create()
-			],
+			tools: allTools,
 			modelSettings: {
 				temperature: 0.7,
 				parallelToolCalls: true,
@@ -563,16 +576,24 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 			this.toolRegistry.setEnabled(id, true);
 		});
 		
+		// Get updated tools
+		const registryTools = this.toolRegistry.getEnabledAgentTools() || [];
+		const webSearchTool = WebSearchTool.create();
+		const codeInterpreterTool = CodeInterpreterTool.create();
+		
+		// Ensure tools is an array
+		const allTools = [
+			...registryTools,
+			webSearchTool,
+			codeInterpreterTool
+		].filter(tool => tool !== undefined && tool !== null);
+		
 		// Recreate conductor with new tools
 		this.conductor = new Agent({
 			name: this.conductor.name,
 			model: this.conductor.model,
 			instructions: this.conductor.instructions,
-			tools: [
-				...this.toolRegistry.getEnabledAgentTools(),
-				WebSearchTool.create(),
-				CodeInterpreterTool.create()
-			],
+			tools: allTools,
 			modelSettings: this.conductor.modelSettings,
 		});
 	}

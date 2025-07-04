@@ -59,9 +59,14 @@ export class ToolRegistry {
    * Get enabled tools for agent
    */
   getEnabledAgentTools(): any[] {
-    return Array.from(this.enabledTools)
+    const tools = Array.from(this.enabledTools)
       .map(id => this.toolInstances.get(id))
       .filter(Boolean);
+    
+    console.log('[ToolRegistry] Enabled tools count:', tools.length);
+    console.log('[ToolRegistry] Enabled tool IDs:', Array.from(this.enabledTools));
+    
+    return tools;
   }
   
   /**
