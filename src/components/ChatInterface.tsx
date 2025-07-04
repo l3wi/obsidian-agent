@@ -402,7 +402,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 					const toolApprovalMessage: ChatMessage = {
 						id: Date.now().toString() + "-tool-approval",
 						role: "assistant",
-						content: "", // Empty content for tool approval message
+						content: "I need your approval to use the following tools:",
 						timestamp: Date.now(),
 						status: "complete",
 						streamResult: result.stream || {
@@ -416,7 +416,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 					const approvalMessage: ChatMessage = {
 						id: Date.now().toString() + "-approval",
 						role: "assistant",
-						content: "",
+						content: "I need your approval to perform the following action:",
 						timestamp: Date.now(),
 						status: "complete",
 						approvalRequest: result.approvalData,
@@ -459,7 +459,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 					const resumedMessage: ChatMessage = {
 						id: resumedMessageId,
 						role: "assistant",
-						content: "",
+						content: "Continuing...",
 						timestamp: Date.now(),
 						status: "streaming",
 					};
@@ -553,18 +553,13 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 					};
 					addMessage(resultMessage);
 				} catch (error) {
-					// Fallback to approval manager
-					const result =
-						await approvalManager.current.executeApprovedOperation(
-							message.approvalRequest,
-						);
-
+					// Handle error
 					const resultMessage: ChatMessage = {
 						id: Date.now().toString(),
 						role: "assistant",
-						content: result.message,
+						content: `Error handling approval: ${error.message}`,
 						timestamp: Date.now(),
-						status: result.success ? "complete" : "error",
+						status: "error",
 					};
 					addMessage(resultMessage);
 				}

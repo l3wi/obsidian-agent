@@ -1,7 +1,6 @@
 import { App, Notice } from 'obsidian';
 import { ApprovalRequest, VaultOperation } from '../types';
 import { ApprovalModal } from '../modals/ApprovalModal';
-import { NoteTool } from '../tools/NoteTool';
 
 export class ApprovalManager {
 	private app: App;
@@ -75,31 +74,6 @@ export class ApprovalManager {
 		});
 	}
 
-	/**
-	 * Execute a vault operation with approval
-	 * @param operation The vault operation to execute
-	 * @param request The approval request data
-	 * @returns Promise that resolves with success status
-	 */
-	async executeWithApproval(
-		operation: VaultOperation,
-		request: ApprovalRequest
-	): Promise<boolean> {
-		return new Promise((resolve) => {
-			this.requestApproval(
-				request,
-				async () => {
-					// Execute the operation
-					const noteTool = new NoteTool(this.app);
-					const success = await noteTool.executeApprovedOperation(operation);
-					resolve(success);
-				},
-				() => {
-					resolve(false);
-				}
-			);
-		});
-	}
 
 	/**
 	 * Get all pending approvals
@@ -124,35 +98,4 @@ export class ApprovalManager {
 		return this.pendingApprovals.size > 0;
 	}
 
-	/**
-	 * Execute an approved operation directly (used by chat interface)
-	 * @param request The approval request containing operation details
-	 * @returns Promise that resolves with the result
-	 */
-	async executeApprovedOperation(request: ApprovalRequest): Promise<{ success: boolean; message: string }> {
-		try {
-			const noteTool = new NoteTool(this.app);
-			
-			// Create a vault operation from the approval request
-			const operation: VaultOperation = {
-				type: request.type as any,
-				path: request.filePath || '',
-				content: request.content
-			};
-
-			const success = await noteTool.executeApprovedOperation(operation);
-			
-			return {
-				success,
-				message: success 
-					? `Successfully ${request.type}d ${request.filePath || 'files'}` 
-					: `Failed to ${request.type} ${request.filePath || 'files'}`
-			};
-		} catch (error) {
-			return {
-				success: false,
-				message: `Error: ${error.message}`
-			};
-		}
-	}
 }
