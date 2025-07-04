@@ -38,7 +38,22 @@ export class AgentOrchestrator {
 				if (msg.role === "user") {
 					return user(msg.content);
 				} else if (msg.role === "assistant") {
-					return assistant(msg.content);
+					// Based on the OpenAI SDK error, assistant messages need content as an array
+					// For text content, we'll create a text content item
+					try {
+						// Try using the assistant function with proper format
+						// If it fails, we'll return a formatted object directly
+						return {
+							role: "assistant",
+							content: [{
+								type: "text",
+								text: msg.content
+							}]
+						};
+					} catch (e) {
+						console.warn("Failed to create assistant message:", e);
+						return null;
+					}
 				} else if (msg.role === "system") {
 					return system(msg.content);
 				}
@@ -311,6 +326,13 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 	}> {
 		const agentMessages = this.convertChatHistory(messages);
 		
+		console.log("[AgentOrchestrator] Processing messages with history:", {
+			totalMessages: messages.length,
+			messageRoles: messages.map(m => m.role),
+			convertedMessages: agentMessages.length,
+			firstUserMessage: messages.find(m => m.role === 'user')?.content?.substring(0, 100)
+		});
+		
 		// Wrap in retry handler with circuit breaker
 		return RetryHandler.withRetry(
 			async () => {
@@ -450,6 +472,15 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 				"Error processing streaming message through agents:",
 				error
 			);
+			
+			// Check for common SDK errors
+			if (error.message?.includes("Cannot read properties of undefined")) {
+				throw ErrorFactory.toolValidationFailed('OpenAI SDK', 
+					'Message format error - assistant messages in history are not currently supported', 
+					{ originalError: error.message }
+				);
+			}
+			
 			throw error;
 		}
 	}
@@ -607,12 +638,39 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 	}
 
 	/**
+	 * Handle tool approval for streaming interruptions with full message history
+	 */
+	async handleStreamApprovalWithHistory(
+		stream: any,
+		approvals: Map<string, boolean>,
+		messages: ChatMessage[],
+		onChunk: (chunk: string) => void
+	): Promise<{
+		response: string;
+		requiresApproval?: boolean;
+		approvalData?: ApprovalRequest;
+		stream?: any; // StreamedRunResult
+	}> {
+		// Log the context we're working with
+		console.log("[AgentOrchestrator] Handling stream approval with history:", {
+			messageCount: messages.length,
+			messageRoles: messages.map(m => m.role),
+			approvalCount: approvals.size,
+			hasStreamState: !!stream?.state
+		});
+
+		// Use the new method that includes message history
+		return this.handleStreamApproval(stream, approvals, onChunk, messages);
+	}
+
+	/**
 	 * Handle tool approval for streaming interruptions
 	 */
 	async handleStreamApproval(
 		stream: any,
 		approvals: Map<string, boolean>,
-		onChunk: (chunk: string) => void
+		onChunk: (chunk: string) => void,
+		messages?: ChatMessage[]
 	): Promise<{
 		response: string;
 		requiresApproval?: boolean;
@@ -661,10 +719,28 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 		}
 
 		try {
-			// Resume execution with streaming using the existing state which includes history
+			// If we have message history, rebuild the conversation context
+			let resumptionContext;
+			if (messages && messages.length > 0) {
+				// Convert the full message history including the tool approval context
+				const historyMessages = this.convertChatHistory(messages);
+				console.log("[AgentOrchestrator] Rebuilding context for approval with full history:", {
+					historyLength: historyMessages.length,
+					includesAssistant: historyMessages.some(m => m.role === 'assistant')
+				});
+				
+				// Create a new conversation with the full history and the approval state
+				// We need to append the approval action to the conversation
+				resumptionContext = [...historyMessages, state];
+			} else {
+				// Fallback to just using the state
+				resumptionContext = state;
+			}
+			
+			// Resume execution with streaming using the full context
 			const resumedStream = await RetryHandler.withRetry(
 				async () => {
-					return await run(this.conductor, state, {
+					return await run(this.conductor, resumptionContext, {
 						stream: true,
 						maxTurns: this.maxTurns,
 					});

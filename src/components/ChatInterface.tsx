@@ -466,10 +466,12 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 					startStreaming(resumedMessageId, message.streamResult);
 
 					// Handle the approval with streaming
+					// Pass the full conversation history to maintain context
 					const result =
-						await agentOrchestrator.current.handleStreamApproval(
+						await agentOrchestrator.current.handleStreamApprovalWithHistory(
 							message.streamResult,
 							approvals,
+							messages, // Pass full message history
 							(chunk) => {
 								// Update message content as chunks arrive
 								updateStreamingContent(resumedMessageId, chunk);
