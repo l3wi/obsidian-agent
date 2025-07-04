@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ToolCallIdGenerator } from "../tools/utils/ToolCallIdGenerator";
 
 interface ToolApprovalProps {
 	interruptions: any[];
@@ -21,11 +22,8 @@ export const ToolApprovalBubble: React.FC<ToolApprovalProps> = ({
 		
 		const allApproved = new Map<string, boolean>();
 		interruptions.forEach((interruption) => {
-			// Get the correct ID based on the interruption structure
-			const id = interruption.id || 
-				interruption.rawItem?.id || 
-				interruption.rawItem?.callId ||
-				interruption.rawItem?.providerData?.id;
+			// Use standardized ID extraction
+			const id = ToolCallIdGenerator.extractFromInterruption(interruption);
 			
 			console.log('[ToolApprovalBubble] Processing interruption for approval:', {
 				id,
@@ -36,6 +34,8 @@ export const ToolApprovalBubble: React.FC<ToolApprovalProps> = ({
 			
 			if (id) {
 				allApproved.set(id, true);
+			} else {
+				console.error('Failed to extract ID from interruption:', interruption);
 			}
 		});
 		
@@ -68,73 +68,15 @@ export const ToolApprovalBubble: React.FC<ToolApprovalProps> = ({
 			</div>
 			<div className="tool-approval-list">
 				{interruptions.map((interruption) => {
-					// Handle both manually created interruptions and SDK interruptions
-					let toolName = "Unknown tool";
-					let args: any = {};
+					// Use standardized extraction methods
+					const toolName = ToolCallIdGenerator.extractToolName(interruption) || "Unknown tool";
+					const args = ToolCallIdGenerator.extractArguments(interruption);
 					
 					// Log to understand structure
 					console.log('Processing interruption:', interruption);
 					
-					// Extract tool name and arguments based on the structure
-					if (interruption.type === "tool_approval_item" && interruption.rawItem) {
-						// New SDK structure with nested rawItem
-						toolName = interruption.rawItem.name;
-						const rawArgs = interruption.rawItem.arguments;
-						if (typeof rawArgs === 'string') {
-							try {
-								args = JSON.parse(rawArgs);
-							} catch {
-								args = { raw: rawArgs };
-							}
-						} else {
-							args = rawArgs || {};
-						}
-					} else if (interruption.rawItem) {
-						// Manually created interruption from ChatInterface
-						toolName = interruption.rawItem.name;
-						// Parse arguments if they're a JSON string
-						const rawArgs = interruption.rawItem.arguments;
-						if (typeof rawArgs === 'string') {
-							try {
-								args = JSON.parse(rawArgs);
-							} catch {
-								args = { raw: rawArgs };
-							}
-						} else {
-							args = rawArgs || {};
-						}
-					} else if (interruption.item) {
-						// SDK interruption structure
-						toolName = interruption.item.name || "Unknown tool";
-						const rawArgs = interruption.item.arguments;
-						if (typeof rawArgs === 'string') {
-							try {
-								args = JSON.parse(rawArgs);
-							} catch {
-								args = { raw: rawArgs };
-							}
-						} else {
-							args = rawArgs || {};
-						}
-					} else if (interruption.name) {
-						// Direct structure
-						toolName = interruption.name;
-						const rawArgs = interruption.arguments;
-						if (typeof rawArgs === 'string') {
-							try {
-								args = JSON.parse(rawArgs);
-							} catch {
-								args = { raw: rawArgs };
-							}
-						} else {
-							args = rawArgs || {};
-						}
-					}
-
-					// Get the ID for the key
-					const interruptionId = interruption.id || 
-						interruption.rawItem?.id || 
-						interruption.rawItem?.callId || 
+					// Get the ID for the key using standardized extraction
+					const interruptionId = ToolCallIdGenerator.extractFromInterruption(interruption) || 
 						Math.random().toString();
 
 					return (
