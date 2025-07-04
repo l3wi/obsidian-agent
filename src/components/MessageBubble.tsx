@@ -173,9 +173,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 					onToolApproval && (
 						<ToolApprovalBubble
 							interruptions={message.streamResult.interruptions}
-							onApprove={(approvals) =>
-								onToolApproval(message.id, approvals)
-							}
+							onApprove={(approvals) => {
+								console.log('[MessageBubble] ToolApprovalBubble onApprove callback triggered:', {
+									messageId: message.id,
+									approvals: Array.from(approvals.entries()),
+									hasOnToolApproval: !!onToolApproval
+								});
+								onToolApproval(message.id, approvals);
+							}}
 							onRejectAll={() => onReject && onReject(message.id)}
 						/>
 					)}

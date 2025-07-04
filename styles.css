@@ -878,3 +878,108 @@
 .context-badge-remove:hover {
 	color: var(--text-normal);
 }
+
+/* Error Boundary Styles */
+.error-boundary-fallback {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 300px;
+	padding: 20px;
+}
+
+.error-container {
+	text-align: center;
+	max-width: 400px;
+}
+
+.error-title {
+	color: var(--text-normal);
+	margin-bottom: 10px;
+}
+
+.error-message {
+	color: var(--text-muted);
+	margin-bottom: 20px;
+	line-height: 1.5;
+}
+
+.error-details {
+	margin-top: 20px;
+	text-align: left;
+}
+
+.error-details summary {
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: 12px;
+}
+
+.error-stack {
+	margin-top: 10px;
+	padding: 10px;
+	background: var(--background-secondary);
+	border-radius: 4px;
+	font-size: 11px;
+	overflow-x: auto;
+	color: var(--text-muted);
+}
+
+/* Chat Error Fallback Styles */
+.chat-error-fallback {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	min-height: 300px;
+	padding: 30px;
+	text-align: center;
+}
+
+.chat-error-fallback .error-icon {
+	font-size: 48px;
+	margin-bottom: 20px;
+}
+
+.chat-error-fallback .error-title {
+	font-size: 18px;
+	font-weight: 600;
+	color: var(--text-normal);
+	margin-bottom: 10px;
+}
+
+.chat-error-fallback .error-message {
+	color: var(--text-muted);
+	margin-bottom: 20px;
+	max-width: 400px;
+	line-height: 1.5;
+}
+
+.chat-error-fallback .error-actions {
+	display: flex;
+	gap: 10px;
+	margin-bottom: 20px;
+}
+
+.chat-error-fallback .error-context {
+	margin-top: 20px;
+	max-width: 500px;
+	text-align: left;
+}
+
+.chat-error-fallback .error-context summary {
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: 12px;
+	text-align: center;
+}
+
+.chat-error-fallback .error-context pre {
+	margin-top: 10px;
+	padding: 10px;
+	background: var(--background-secondary);
+	border-radius: 4px;
+	font-size: 11px;
+	overflow-x: auto;
+	color: var(--text-muted);
+}
