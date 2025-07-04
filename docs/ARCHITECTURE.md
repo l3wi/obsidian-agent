@@ -33,15 +33,19 @@ The Obsidian Agent is an AI-powered chat assistant plugin that enables users to 
 │               AgentOrchestrator                                  │
 │  - OpenAI Agents SDK integration                                │
 │  - Message streaming                                             │
-│  - Tool execution                                                │
+│  - Tool execution via ToolRegistry                              │
 │  - Approval handling                                             │
 └─────────────────┬───────────────────────────────────────────────┘
                   │
 ┌─────────────────▼───────────────────────────────────────────────┐
-│                    Tool System                                   │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────┐   │
-│  │   NoteTool  │  │ApprovalManager│  │  CommandParser     │   │
-│  └─────────────┘  └──────────────┘  └─────────────────────┘   │
+│                Tool System (Registry Pattern)                    │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐    │
+│  │ ToolRegistry │  │Tool Classes  │  │ToolCallIdGenerator│    │
+│  └──────────────┘  └──────────────┘  └───────────────────┘    │
+│                                                                  │
+│  ┌──────────────┐  ┌──────────────┐                           │
+│  │ Vault Tools  │  │  Web Tools   │                           │
+│  └──────────────┘  └──────────────┘                           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -95,16 +99,22 @@ Central AI orchestration component:
 
 ```typescript
 export class AgentOrchestrator {
-    private agent: Agent;
-    private currentRun: AgentRun | null;
+    private conductor: Agent;
+    private toolRegistry: ToolRegistry;
     
-    async processCommandStream(
-        command: string,
-        input: string,
-        onChunk: (chunk: string) => void,
-        onToolCall?: (toolName: string, args: any) => void,
-        onInterrupt?: (interruptions: any[]) => void
-    ): Promise<AgentResponse>
+    constructor(app: App, apiKey: string, model: string) {
+        // Initialize tool registry with context
+        this.toolRegistry = new ToolRegistry(toolContext);
+        
+        // Register all available tools
+        this.toolRegistry.register(new CreateNoteTool());
+        // ... register other tools
+        
+        // Create agent with dynamic tools
+        this.conductor = new Agent({
+            tools: this.toolRegistry.getEnabledAgentTools()
+        });
+    }
 }
 ```
 
@@ -115,43 +125,49 @@ export class AgentOrchestrator {
 - Processes tool calls and interruptions
 - Maintains conversation context
 
-### 4. Tool System
+### 4. Tool System (Registry Pattern)
 
-#### Built-in Tools
+#### Tool Architecture
+The tool system uses a registry pattern for extensibility and consistency:
 
-**OpenAI SDK Tools:**
-- `web_search`: Search the web for information
-- `code_interpreter`: Analyze and process data
+**Core Components:**
+- `ToolRegistry`: Manages tool registration, enabling/disabling, and lifecycle
+- `Tool Interface`: Standardized interface for all tools with metadata, schema, and execution
+- `ToolCallIdGenerator`: Handles consistent ID generation and extraction across interruptions
 
-**Custom Vault Tools:**
-- `create_note`: Create new notes in the vault
-- `modify_note`: Edit existing notes
-- `delete_file`: Move files to trash
-- `create_folder`: Create directories
-- `copy_file`: Duplicate files or folders
+#### Tool Categories
 
-#### Tool Registration
-Tools are registered with the Conductor agent using OpenAI's function calling:
+**Vault Tools:**
+- `CreateNoteTool`: Create new notes in the vault
+- `ModifyNoteTool`: Edit existing notes  
+- `DeleteFileTool`: Move files to trash
+- `CreateFolderTool`: Create directories
+- `CopyFileTool`: Duplicate files or folders
+
+**Web Tools:**
+- `WebSearchTool`: Search the web for information
+- `CodeInterpreterTool`: Analyze and process data
+
+#### Tool Implementation
+Each tool implements the standardized interface:
 
 ```typescript
-const tools = [
-    {
-        type: "function",
-        function: {
-            name: "create_note",
-            description: "Create a new note in the vault",
-            parameters: {
-                type: "object",
-                properties: {
-                    path: { type: "string" },
-                    content: { type: "string" }
-                },
-                required: ["path", "content"]
-            }
-        },
-        needsApproval: true
-    }
-];
+export interface Tool<TArgs = any, TResult = any> {
+  metadata: ToolMetadata;
+  schema: z.ZodSchema<TArgs>;
+  execute: (args: TArgs, context: ToolContext) => Promise<TResult>;
+  validate?: (args: TArgs, context: ToolContext) => Promise<ValidationResult>;
+}
+```
+
+#### Dynamic Tool Management
+Tools can be dynamically enabled/disabled:
+
+```typescript
+const registry = new ToolRegistry(context);
+registry.register(new CreateNoteTool());
+registry.setEnabled('create_note', false); // Disable tool
+const enabledTools = registry.getEnabledAgentTools();
 ```
 
 ### 5. Approval System

@@ -1,19 +1,25 @@
 import {
 	Agent,
 	run,
-	webSearchTool,
-	codeInterpreterTool,
 	OpenAIProvider,
 	setDefaultModelProvider,
-	tool,
 	user,
 	assistant,
 	system,
 } from "@openai/agents";
-import { z } from "zod/v3";
 import OpenAI from "openai";
 import { App } from "obsidian";
-import { ApprovalRequest, ChatMessage } from "../types";
+import { ApprovalRequest, ChatMessage, ChatAssistantSettings, DEFAULT_SETTINGS } from "../types";
+import { ToolRegistry } from "../tools/ToolRegistry";
+import { ToolContext } from "../tools/types";
+import {
+	CreateNoteTool,
+	ModifyNoteTool,
+	DeleteFileTool,
+	CreateFolderTool,
+	CopyFileTool,
+} from "../tools/vault";
+import { WebSearchTool, CodeInterpreterTool } from "../tools/web";
 import { ErrorFactory } from "../errors/ErrorFactory";
 import { RetryHandler } from "../utils/RetryHandler";
 import { CircuitBreaker, CircuitState } from "../utils/CircuitBreaker";
@@ -27,41 +33,33 @@ export class AgentOrchestrator {
 	private maxTurns: number;
 	private openaiClient: OpenAI;
 	private provider: OpenAIProvider;
+	private toolRegistry: ToolRegistry;
+	private settings: ChatAssistantSettings = DEFAULT_SETTINGS;
 	private circuitBreaker: CircuitBreaker;
 
 	/**
 	 * Convert chat messages to agent input format
 	 */
 	private convertChatHistory(messages: ChatMessage[]): any[] {
-		// Build a conversation context that includes assistant messages
-		const conversationContext: any[] = [];
-		
-		// Add system messages and user messages directly
-		// For assistant messages, we'll include them in a context summary
-		let assistantContext = "";
-		
-		for (const msg of messages) {
-			if (msg.role === "user") {
-				// If we have accumulated assistant context, add it as a system message before the user message
-				if (assistantContext) {
-					conversationContext.push(system(`Previous assistant response: ${assistantContext}`));
-					assistantContext = "";
+		return messages
+			.map((msg) => {
+				// Skip messages without content
+				if (!msg.content) {
+					console.warn("[AgentOrchestrator] Skipping message without content:", msg);
+					return null;
 				}
-				conversationContext.push(user(msg.content));
-			} else if (msg.role === "assistant") {
-				// Accumulate assistant responses to add as context
-				assistantContext = msg.content;
-			} else if (msg.role === "system") {
-				conversationContext.push(system(msg.content));
-			}
-		}
-		
-		// Add any remaining assistant context
-		if (assistantContext) {
-			conversationContext.push(system(`Previous assistant response: ${assistantContext}`));
-		}
-		
-		return conversationContext;
+				
+				if (msg.role === "user") {
+					return user(msg.content);
+				} else if (msg.role === "assistant") {
+					return assistant(msg.content);
+				} else if (msg.role === "system") {
+					return system(msg.content);
+				}
+				// Skip unknown message types
+				return null;
+			})
+			.filter(Boolean);
 	}
 
 	constructor(app: App, apiKey: string, model = "gpt-4.1", maxTurns = 20) {
@@ -99,152 +97,42 @@ export class AgentOrchestrator {
 		// Set as default provider for all agents
 		setDefaultModelProvider(this.provider);
 
-		// Create vault-specific tools
-		const createNoteTool = tool({
-			name: "create_note",
-			description: "Create a new note in the Obsidian vault",
-			parameters: z.object({
-				path: z
-					.string()
-					.describe(
-						'The file path for the new note (e.g., "Notes/MyNote.md")'
-					),
-				content: z
-					.string()
-					.describe("The content of the note in Markdown format"),
-			}),
-			needsApproval: async () => true, // Always require approval for creating notes
-			execute: async ({ path, content }) => {
-				// This will be executed after approval
-				try {
-					// Check if file already exists
-					if (this.app.vault.getAbstractFileByPath(path)) {
-						throw ErrorFactory.vaultFileExists(path);
-					}
-					
-					const parentFolder = path.substring(
-						0,
-						path.lastIndexOf("/")
-					);
-					if (
-						parentFolder &&
-						!this.app.vault.getAbstractFileByPath(parentFolder)
-					) {
-						await this.app.vault.createFolder(parentFolder);
-					}
-					await this.app.vault.create(path, content);
-					return `Successfully created note at ${path}`;
-				} catch (error) {
-					if (error instanceof ChatAssistantError) {
-						return `Failed to create note: ${error.userMessage}`;
-					}
-					return `Failed to create note: ${error.message}`;
-				}
-			},
-		});
+		// Initialize tool registry
+		const toolContext: ToolContext = {
+			app,
+			apiKey,
+			settings: this.settings,
+		};
+		
+		this.toolRegistry = new ToolRegistry(toolContext);
+		
+		// Register vault tools
+		this.toolRegistry.register(new CreateNoteTool());
+		this.toolRegistry.register(new ModifyNoteTool());
+		this.toolRegistry.register(new DeleteFileTool());
+		this.toolRegistry.register(new CreateFolderTool());
+		this.toolRegistry.register(new CopyFileTool());
+		
+		// Note: Web and code interpreter tools are OpenAI SDK tools that are added directly
 
-		const modifyNoteTool = tool({
-			name: "modify_note",
-			description: "Modify an existing note in the Obsidian vault",
-			parameters: z.object({
-				path: z
-					.string()
-					.describe("The file path of the note to modify"),
-				content: z.string().describe("The new content for the note"),
-			}),
-			needsApproval: async () => true, // Always require approval for modifying notes
-			execute: async ({ path, content }) => {
-				try {
-					const file = this.app.vault.getAbstractFileByPath(path);
-					if (file && "extension" in file) {
-						// Check if it's a TFile
-						await this.app.vault.process(
-							file as any,
-							() => content
-						);
-						return `Successfully modified note at ${path}`;
-					}
-					return `File not found: ${path}`;
-				} catch (error) {
-					return `Failed to modify note: ${error.message}`;
-				}
-			},
-		});
+		// Get all tools for the agent
+		const registryTools = this.toolRegistry.getEnabledAgentTools() || [];
+		const webSearchTool = WebSearchTool.create();
+		const codeInterpreterTool = CodeInterpreterTool.create();
+		
+		// Ensure tools is an array
+		const allTools = [
+			...registryTools,
+			webSearchTool,
+			codeInterpreterTool
+		].filter(tool => tool !== undefined && tool !== null);
+		
+		console.log("[AgentOrchestrator] Registry tools:", registryTools);
+		console.log("[AgentOrchestrator] Web search tool:", webSearchTool);
+		console.log("[AgentOrchestrator] Code interpreter tool:", codeInterpreterTool);
+		console.log("[AgentOrchestrator] All tools count:", allTools.length);
 
-		const createFolderTool = tool({
-			name: "create_folder",
-			description: "Create a new folder in the Obsidian vault",
-			parameters: z.object({
-				path: z
-					.string()
-					.describe(
-						'The path for the new folder (e.g., "Notes/My Folder")'
-					),
-			}),
-			needsApproval: async () => true,
-			execute: async ({ path }) => {
-				try {
-					await this.app.vault.createFolder(path);
-					return `Successfully created folder at ${path}`;
-				} catch (error) {
-					return `Failed to create folder: ${error.message}`;
-				}
-			},
-		});
-
-		const copyFileTool = tool({
-			name: "copy_file",
-			description:
-				"Copy a file or folder to a new location in the Obsidian vault",
-			parameters: z.object({
-				sourcePath: z
-					.string()
-					.describe("The path of the file or folder to copy"),
-				destinationPath: z
-					.string()
-					.describe("The path of the new file or folder"),
-			}),
-			needsApproval: async () => true,
-			execute: async ({ sourcePath, destinationPath }) => {
-				try {
-					const file =
-						this.app.vault.getAbstractFileByPath(sourcePath);
-					if (file) {
-						await this.app.vault.copy(file, destinationPath);
-						return `Successfully copied ${sourcePath} to ${destinationPath}`;
-					}
-					return `File not found: ${sourcePath}`;
-				} catch (error) {
-					return `Failed to copy file: ${error.message}`;
-				}
-			},
-		});
-
-		const deleteFileTool = tool({
-			name: "delete_file",
-			description:
-				"Delete a file or folder in the Obsidian vault (moves to trash)",
-			parameters: z.object({
-				path: z
-					.string()
-					.describe("The path of the file or folder to delete"),
-			}),
-			needsApproval: async () => true,
-			execute: async ({ path }) => {
-				try {
-					const file = this.app.vault.getAbstractFileByPath(path);
-					if (file) {
-						await this.app.vault.trash(file, true);
-						return `Successfully moved ${path} to trash`;
-					}
-					return `File not found: ${path}`;
-				} catch (error) {
-					return `Failed to delete file: ${error.message}`;
-				}
-			},
-		});
-
-		// Initialize the conductor agent with OpenAI hosted tools and vault tools
+		// Initialize the conductor agent with dynamic tools from registry
 		this.conductor = new Agent({
 			name: "Conductor",
 			model: this.model,
@@ -292,15 +180,7 @@ Your tools:
 7. delete_file: Delete files or folders
 
 Remember: ALWAYS analyze context before acting. The user's request likely relates to something already visible or recently accessed.`,
-			tools: [
-				webSearchTool(),
-				codeInterpreterTool(),
-				createNoteTool,
-				modifyNoteTool,
-				createFolderTool,
-				copyFileTool,
-				deleteFileTool,
-			],
+			tools: allTools,
 			modelSettings: {
 				temperature: 0.7,
 				parallelToolCalls: true,
@@ -661,8 +541,8 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 			hasStreamState: !!stream?.state
 		});
 
-		// Use the new method that includes message history
-		return this.handleStreamApproval(stream, approvals, onChunk, messages);
+		// Use the regular method that includes message history
+		return this.handleStreamApproval(stream, approvals, onChunk);
 	}
 
 	/**
@@ -671,8 +551,7 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 	async handleStreamApproval(
 		stream: any,
 		approvals: Map<string, boolean>,
-		onChunk: (chunk: string) => void,
-		messages?: ChatMessage[]
+		onChunk: (chunk: string) => void
 	): Promise<{
 		response: string;
 		requiresApproval?: boolean;
@@ -860,5 +739,55 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 		} else {
 			return "The operation has been cancelled as requested.";
 		}
+	}
+
+	/**
+	 * Update enabled tools dynamically
+	 */
+	updateEnabledTools(enabledToolIds: string[]): void {
+		// Disable all tools first
+		this.toolRegistry.getTools().forEach(tool => {
+			this.toolRegistry.setEnabled(tool.metadata.id, false);
+		});
+		
+		// Enable specified tools
+		enabledToolIds.forEach(id => {
+			this.toolRegistry.setEnabled(id, true);
+		});
+		
+		// Get updated tools
+		const registryTools = this.toolRegistry.getEnabledAgentTools() || [];
+		const webSearchTool = WebSearchTool.create();
+		const codeInterpreterTool = CodeInterpreterTool.create();
+		
+		// Ensure tools is an array
+		const allTools = [
+			...registryTools,
+			webSearchTool,
+			codeInterpreterTool
+		].filter(tool => tool !== undefined && tool !== null);
+		
+		// Recreate conductor with new tools
+		this.conductor = new Agent({
+			name: this.conductor.name,
+			model: this.conductor.model,
+			instructions: this.conductor.instructions,
+			tools: allTools,
+			modelSettings: this.conductor.modelSettings,
+		});
+	}
+
+	/**
+	 * Get available tools
+	 */
+	getAvailableTools() {
+		return this.toolRegistry.getTools();
+	}
+
+	/**
+	 * Get tool registry
+	 */
+	getToolRegistry() {
+		return this.toolRegistry;
 	}
 }
