@@ -362,21 +362,18 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 						},
 					);
 
-				// First, complete the assistant's response message
-				completeStreaming(assistantMessageId, result.response);
-
-				// Then, if there are tool approvals needed, create a separate message for them
+				// Complete the assistant's response message with approval info if needed
 				if (result.stream && result.stream.interruptions && result.stream.interruptions.length > 0) {
-					const toolApprovalMessage: ChatMessage = {
-						id: Date.now().toString() + "-tool-approval",
-						role: "assistant",
-						content: "I need your approval to use the following tools:",
-						timestamp: Date.now(),
+					// Update the existing message with the stream result and approval status
+					updateMessage(assistantMessageId, {
+						content: result.response,
 						status: "complete",
 						streamResult: result.stream,
 						approvalStatus: "pending",
-					};
-					addMessage(toolApprovalMessage);
+					});
+				} else {
+					// Just complete the streaming message normally
+					completeStreaming(assistantMessageId, result.response);
 				}
 			} catch (error) {
 				console.error("Error processing message:", error);

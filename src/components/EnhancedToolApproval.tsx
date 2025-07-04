@@ -230,9 +230,6 @@ export const EnhancedToolApproval: React.FC<EnhancedToolApprovalProps> = ({
 	if (showStatus) {
 		return (
 			<div className="enhanced-tool-approval status-view">
-				<div className="tool-approval-header">
-					<strong>Tool Execution Summary</strong>
-				</div>
 				<div className="tool-approval-list">
 					{interruptions.map((interruption, index) => renderToolPreview(interruption, index))}
 				</div>
@@ -248,7 +245,7 @@ export const EnhancedToolApproval: React.FC<EnhancedToolApprovalProps> = ({
 	return (
 		<div className="enhanced-tool-approval">
 			<div className="tool-approval-header">
-				<strong>Review Operations</strong>
+				<span>Review Operations</span>
 				<div className="approval-controls">
 					<button className="control-btn" onClick={selectAll}>
 						Select All
@@ -260,7 +257,7 @@ export const EnhancedToolApproval: React.FC<EnhancedToolApprovalProps> = ({
 			</div>
 			
 			<div className="tool-approval-list">
-				{interruptions.map(renderToolPreview)}
+				{interruptions.map((interruption, index) => renderToolPreview(interruption, index))}
 			</div>
 			
 			<div className="tool-approval-footer">

@@ -1,18 +1,19 @@
 /* Enhanced Tool Approval Styles */
 .enhanced-tool-approval {
 	background-color: var(--background-secondary);
-	border-radius: 8px;
-	padding: 16px;
+	border-radius: 6px;
+	padding: 12px;
 	margin: 8px 0;
+	border: 1px solid var(--background-modifier-border);
 }
 
 .tool-approval-header {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	margin-bottom: 16px;
-	padding-bottom: 8px;
-	border-bottom: 1px solid var(--background-modifier-border);
+	margin-bottom: 12px;
+	font-size: 13px;
+	font-weight: 500;
 }
 
 .approval-controls {
@@ -21,12 +22,12 @@
 }
 
 .control-btn {
-	background: var(--interactive-normal);
-	color: var(--text-normal);
-	border: 1px solid var(--background-modifier-border);
-	padding: 4px 12px;
-	border-radius: 4px;
-	font-size: 12px;
+	background: transparent;
+	color: var(--text-muted);
+	border: none;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 11px;
 	cursor: pointer;
 	transition: all 0.2s ease;
 }
@@ -44,8 +45,8 @@
 .enhanced-tool-item {
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
-	margin-bottom: 8px;
+	border-radius: 4px;
+	margin-bottom: 6px;
 	transition: all 0.2s ease;
 }
 
@@ -56,14 +57,15 @@
 .tool-header {
 	display: flex;
 	align-items: center;
-	padding: 12px;
+	padding: 8px 10px;
 	gap: 8px;
 }
 
 .tool-checkbox {
-	width: 18px;
-	height: 18px;
+	width: 16px;
+	height: 16px;
 	cursor: pointer;
+	flex-shrink: 0;
 }
 
 .tool-label {
@@ -75,12 +77,14 @@
 }
 
 .tool-icon {
-	font-size: 18px;
+	font-size: 16px;
+	margin-right: 2px;
 }
 
 .tool-name {
-	font-weight: 500;
+	font-weight: 400;
 	color: var(--text-normal);
+	font-size: 13px;
 }
 
 .tool-path {
@@ -176,11 +180,12 @@
 }
 
 .approval-button {
-	padding: 8px 16px;
+	padding: 6px 14px;
 	border-radius: 4px;
 	border: none;
 	cursor: pointer;
-	font-weight: 500;
+	font-weight: 400;
+	font-size: 13px;
 	transition: all 0.2s ease;
 }
 
@@ -207,21 +212,45 @@
 	opacity: 0.8;
 }
 
-/* Status view styles */
+/* Status view styles - compact */
+.enhanced-tool-approval.status-view {
+	padding: 8px 12px;
+	background: transparent;
+	border: none;
+	margin: 4px 0;
+}
+
+.enhanced-tool-approval.status-view .tool-approval-header {
+	margin-bottom: 8px;
+}
+
 .enhanced-tool-approval.status-view .tool-header {
 	cursor: default;
+	padding: 4px 0;
 }
 
 .enhanced-tool-approval.status-view .tool-checkbox,
-.enhanced-tool-approval.status-view .control-btn {
+.enhanced-tool-approval.status-view .control-btn,
+.enhanced-tool-approval.status-view .tool-expand {
 	display: none;
 }
 
+.enhanced-tool-approval.status-view .enhanced-tool-item {
+	background: transparent;
+	border: none;
+	margin-bottom: 2px;
+}
+
+.tool-approval-status {
+	margin-top: 8px;
+}
+
 .approval-status-badge {
-	padding: 4px 12px;
-	border-radius: 4px;
-	font-size: 13px;
-	font-weight: 500;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 11px;
+	font-weight: 400;
+	display: inline-block;
 }
 
 .approval-status-badge.approved {
@@ -244,26 +273,24 @@
 .approval-shortcuts {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 12px;
-	margin-top: 12px;
-	padding-top: 12px;
+	gap: 8px;
+	margin-top: 8px;
+	padding-top: 8px;
 	border-top: 1px solid var(--background-modifier-border);
 }
 
 .shortcut-hint {
 	display: flex;
 	align-items: center;
-	gap: 6px;
-	font-size: 12px;
-	color: var(--text-muted);
+	gap: 4px;
+	font-size: 11px;
+	color: var(--text-faint);
 }
 
 .shortcut-hint kbd {
-	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 3px;
-	padding: 2px 6px;
-	font-size: 11px;
+	background: var(--background-modifier-border);
+	border-radius: 2px;
+	padding: 1px 4px;
+	font-size: 10px;
 	font-family: monospace;
-	box-shadow: 0 1px 0 var(--background-modifier-border);
 }
