@@ -1,0 +1,151 @@
+/* Tool Execution Progress Styles */
+.tool-execution-progress {
+	background: var(--background-secondary);
+	border-radius: 8px;
+	padding: 16px;
+	margin: 8px 0;
+	animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+	from {
+		opacity: 0;
+		transform: translateY(-10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.progress-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 12px;
+}
+
+.progress-title {
+	font-weight: 500;
+	color: var(--text-normal);
+}
+
+.progress-count {
+	font-size: 13px;
+	color: var(--text-muted);
+}
+
+.progress-bar {
+	height: 6px;
+	background: var(--background-primary);
+	border-radius: 3px;
+	overflow: hidden;
+	margin-bottom: 16px;
+}
+
+.progress-fill {
+	height: 100%;
+	background: var(--interactive-accent);
+	border-radius: 3px;
+	transition: width 0.3s ease;
+}
+
+.execution-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.execution-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	background: var(--background-primary);
+	border-radius: 6px;
+	border: 1px solid var(--background-modifier-border);
+	transition: all 0.2s ease;
+}
+
+.execution-item.status-executing {
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-accent);
+}
+
+.execution-item.status-completed {
+	border-color: var(--text-success);
+	opacity: 0.8;
+}
+
+.execution-item.status-failed {
+	border-color: var(--text-error);
+	background: var(--background-modifier-error);
+}
+
+.execution-item.status-rejected {
+	opacity: 0.6;
+}
+
+.status-icon {
+	font-size: 16px;
+	flex-shrink: 0;
+}
+
+.tool-name {
+	font-weight: 500;
+	color: var(--text-normal);
+	flex-shrink: 0;
+}
+
+.tool-path {
+	color: var(--text-muted);
+	font-size: 12px;
+	margin-left: auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.executing-spinner {
+	margin-left: auto;
+	width: 16px;
+	height: 16px;
+}
+
+.spinner {
+	width: 100%;
+	height: 100%;
+	animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.spinner-circle {
+	stroke: var(--interactive-accent);
+	stroke-dasharray: 50;
+	stroke-dashoffset: 12.5;
+	animation: dash 1.5s ease-in-out infinite;
+}
+
+@keyframes dash {
+	0% {
+		stroke-dashoffset: 50;
+	}
+	50% {
+		stroke-dashoffset: 12.5;
+	}
+	100% {
+		stroke-dashoffset: 50;
+	}
+}
+
+.error-message {
+	margin-left: 4px;
+	color: var(--text-error);
+	cursor: help;
+	font-size: 14px;
+}

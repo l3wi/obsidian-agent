@@ -1,5 +1,6 @@
 import { Tool, ToolContext } from '../types';
 import { z } from 'zod/v3';
+import { useUndoStore, createUndoableFolderOperation } from '../../stores/undoStore';
 
 export class CreateFolderTool implements Tool {
   metadata = {
@@ -47,6 +48,15 @@ export class CreateFolderTool implements Tool {
     
     try {
       await context.app.vault.createFolder(path);
+      
+      // Add to undo history
+      const undoOperation = createUndoableFolderOperation(
+        context.app,
+        'create',
+        path
+      );
+      useUndoStore.getState().addOperation(undoOperation);
+      
       return {
         success: true,
         message: `Successfully created folder at ${path}`,

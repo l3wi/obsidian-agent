@@ -1,0 +1,296 @@
+/* Enhanced Tool Approval Styles */
+.enhanced-tool-approval {
+	background-color: var(--background-secondary);
+	border-radius: 6px;
+	padding: 12px;
+	margin: 8px 0;
+	border: 1px solid var(--background-modifier-border);
+}
+
+.tool-approval-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 12px;
+	font-size: 13px;
+	font-weight: 500;
+}
+
+.approval-controls {
+	display: flex;
+	gap: 8px;
+}
+
+.control-btn {
+	background: transparent;
+	color: var(--text-muted);
+	border: none;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 11px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.control-btn:hover {
+	background: var(--interactive-hover);
+}
+
+.tool-approval-list {
+	margin-bottom: 16px;
+	max-height: 400px;
+	overflow-y: auto;
+}
+
+.enhanced-tool-item {
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	margin-bottom: 6px;
+	transition: all 0.2s ease;
+}
+
+.enhanced-tool-item:hover {
+	border-color: var(--interactive-hover);
+}
+
+.tool-header {
+	display: flex;
+	align-items: center;
+	padding: 8px 10px;
+	gap: 8px;
+}
+
+.tool-checkbox {
+	width: 16px;
+	height: 16px;
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.tool-label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	cursor: pointer;
+	flex-grow: 0;
+}
+
+.tool-icon {
+	font-size: 16px;
+	margin-right: 2px;
+}
+
+.tool-name {
+	font-weight: 400;
+	color: var(--text-normal);
+	font-size: 13px;
+}
+
+.tool-path {
+	color: var(--text-muted);
+	font-size: 12px;
+	margin-left: auto;
+	margin-right: 8px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 300px;
+}
+
+.tool-expand {
+	background: none;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	padding: 4px;
+	font-size: 12px;
+	transition: transform 0.2s ease;
+}
+
+.tool-expand:hover {
+	color: var(--text-normal);
+}
+
+.tool-details {
+	padding: 0 12px 12px 48px;
+	animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+	from {
+		opacity: 0;
+		transform: translateY(-10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.detail-label {
+	font-weight: 500;
+	color: var(--text-muted);
+	margin-bottom: 4px;
+	font-size: 12px;
+}
+
+.detail-item {
+	margin-bottom: 8px;
+}
+
+.content-preview,
+.args-preview {
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	padding: 8px;
+	font-size: 12px;
+	font-family: monospace;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	max-height: 150px;
+	overflow-y: auto;
+}
+
+.warning-message {
+	color: var(--text-error);
+	background: var(--background-modifier-error);
+	padding: 8px 12px;
+	border-radius: 4px;
+	font-size: 13px;
+}
+
+.tool-approval-footer {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding-top: 16px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.approval-summary {
+	color: var(--text-muted);
+	font-size: 13px;
+}
+
+.approval-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.approval-button {
+	padding: 6px 14px;
+	border-radius: 4px;
+	border: none;
+	cursor: pointer;
+	font-weight: 400;
+	font-size: 13px;
+	transition: all 0.2s ease;
+}
+
+.approval-button.approve {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.approval-button.approve:hover:not(:disabled) {
+	background: var(--interactive-accent-hover);
+}
+
+.approval-button.approve:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.approval-button.reject {
+	background: var(--background-modifier-error);
+	color: var(--text-error);
+}
+
+.approval-button.reject:hover {
+	opacity: 0.8;
+}
+
+/* Status view styles - compact */
+.enhanced-tool-approval.status-view {
+	padding: 8px 12px;
+	background: transparent;
+	border: none;
+	margin: 4px 0;
+}
+
+.enhanced-tool-approval.status-view .tool-approval-header {
+	margin-bottom: 8px;
+}
+
+.enhanced-tool-approval.status-view .tool-header {
+	cursor: default;
+	padding: 4px 0;
+}
+
+.enhanced-tool-approval.status-view .tool-checkbox,
+.enhanced-tool-approval.status-view .control-btn,
+.enhanced-tool-approval.status-view .tool-expand {
+	display: none;
+}
+
+.enhanced-tool-approval.status-view .enhanced-tool-item {
+	background: transparent;
+	border: none;
+	margin-bottom: 2px;
+}
+
+.tool-approval-status {
+	margin-top: 8px;
+}
+
+.approval-status-badge {
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 11px;
+	font-weight: 400;
+	display: inline-block;
+}
+
+.approval-status-badge.approved {
+	background: var(--background-modifier-success);
+	color: var(--text-success);
+}
+
+.approval-status-badge.rejected {
+	background: var(--background-modifier-error);
+	color: var(--text-error);
+}
+
+/* Focus states */
+.enhanced-tool-item.focused {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+}
+
+/* Keyboard shortcuts display */
+.approval-shortcuts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.shortcut-hint {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 11px;
+	color: var(--text-faint);
+}
+
+.shortcut-hint kbd {
+	background: var(--background-modifier-border);
+	border-radius: 2px;
+	padding: 1px 4px;
+	font-size: 10px;
+	font-family: monospace;
+}

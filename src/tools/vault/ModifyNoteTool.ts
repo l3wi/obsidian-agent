@@ -1,6 +1,7 @@
 import { Tool, ToolContext } from '../types';
 import { z } from 'zod/v3';
 import { TFile } from 'obsidian';
+import { useUndoStore, createUndoableFileOperation } from '../../stores/undoStore';
 
 export class ModifyNoteTool implements Tool {
   metadata = {
@@ -47,7 +48,22 @@ export class ModifyNoteTool implements Tool {
     try {
       const file = context.app.vault.getAbstractFileByPath(path);
       if (file && file instanceof TFile) {
+        // Read old content for undo
+        const oldContent = await context.app.vault.read(file);
+        
+        // Modify the file
         await context.app.vault.modify(file, content);
+        
+        // Add to undo history
+        const undoOperation = createUndoableFileOperation(
+          context.app,
+          'modify',
+          path,
+          oldContent,
+          content
+        );
+        useUndoStore.getState().addOperation(undoOperation);
+        
         return {
           success: true,
           message: `Successfully modified note at ${path}`,

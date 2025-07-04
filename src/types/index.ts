@@ -16,6 +16,28 @@ export const DEFAULT_SETTINGS: ChatAssistantSettings = {
 	maxTurns: 20
 };
 
+export interface MessageSegment {
+	id: string;
+	type: 'text' | 'tool-approval' | 'tool-result' | 'continuation';
+	content: string;
+	timestamp: number;
+	metadata?: {
+		toolName?: string;
+		toolArgs?: any;
+		approvalStatus?: 'pending' | 'approved' | 'rejected';
+		streamResult?: any;
+		interruptions?: any[];
+	};
+}
+
+export interface ToolCallRecord {
+	id: string;
+	toolName: string;
+	args: any;
+	timestamp: number;
+	status: 'pending' | 'approved' | 'rejected' | 'completed';
+}
+
 export interface ChatMessage {
 	id: string;
 	role: 'user' | 'assistant' | 'system';
@@ -26,6 +48,9 @@ export interface ChatMessage {
 	approvalRequest?: ApprovalRequest;
 	approvalStatus?: 'pending' | 'approved' | 'rejected';
 	streamResult?: any; // StreamedRunResult from agents SDK
+	segments?: MessageSegment[]; // Store multiple content segments
+	toolCalls?: ToolCallRecord[]; // Store tool call history
+	preservedContent?: string; // Content before tool interruption
 }
 
 export interface SlashCommand {

@@ -3,6 +3,10 @@
     /* Custom ribbon icon styles if needed */
 }
 
+/* Import enhanced approval styles */
+@import 'src/styles/enhanced-approval.css';
+@import 'src/styles/execution-progress.css';
+
 /* Ensure the view takes full height */
 .workspace-leaf-content[data-type="chat-assistant-view"] {
     padding: 0;
@@ -57,6 +61,32 @@
     font-size: 16px;
 }
 
+.chat-header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.chat-action-button {
+    padding: 4px 12px;
+    font-size: 12px;
+    background-color: var(--interactive-normal);
+    color: var(--text-normal);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.chat-action-button:hover:not(:disabled) {
+    background-color: var(--interactive-hover);
+}
+
+.chat-action-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .chat-clear-button {
     padding: 4px 12px;
     font-size: 12px;
@@ -75,72 +105,53 @@
 .chat-messages {
     flex: 1;
     overflow-y: auto;
-    overflow-x: hidden;
     padding: 15px;
-    padding-bottom: 96px; /* Space for fixed input (80px height + 16px margin) */
+    padding-bottom: 100px; /* Space for input */
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    scroll-behavior: smooth;
-    min-height: 0; /* Important for Firefox */
+    gap: 10px;
 }
 
-/* Welcome Message */
+/* Chat Welcome Message */
 .chat-welcome {
-    text-align: center;
-    color: var(--text-muted);
+    max-width: 600px;
+    margin: 20px auto;
     padding: 20px;
+    background-color: var(--background-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--background-modifier-border);
+}
+
+.chat-welcome p {
+    margin: 10px 0;
+    color: var(--text-normal);
+    line-height: 1.5;
 }
 
 .chat-welcome ul {
-    list-style: none;
-    padding: 0;
-    margin-top: 10px;
+    margin: 10px 0;
+    padding-left: 20px;
 }
 
 .chat-welcome li {
-    margin: 5px 0;
-}
-
-.chat-welcome code {
-    background-color: var(--code-background);
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-size: 13px;
-}
-
-.chat-welcome-note {
-    margin-top: 15px;
-    font-size: 0.9em;
+    margin: 8px 0;
     color: var(--text-muted);
-    font-style: italic;
+}
+
+.chat-welcome strong {
+    color: var(--text-normal);
 }
 
 /* Message Bubbles */
 .message-bubble {
-    max-width: 70%;
-    word-wrap: break-word;
     display: flex;
-    flex-direction: column;
-    animation: fadeIn 0.3s ease-in;
-    user-select: text;
-    -webkit-user-select: text;
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    gap: 10px;
+    max-width: 80%;
+    animation: fadeIn 0.2s ease;
 }
 
 .message-user {
     align-self: flex-end;
-    margin-left: auto;
 }
 
 .message-user .message-content {
@@ -243,97 +254,22 @@
     margin: 0.25em 0;
 }
 
-.message-content blockquote,
-.message-text blockquote {
-    border-left: 3px solid var(--quote-opening-modifier);
-    padding-left: 1em;
-    margin: 0.5em 0;
-    color: var(--text-muted);
-}
-
+/* Message Metadata */
 .message-metadata {
-    font-size: 11px;
-    color: var(--text-faint);
-    margin-top: 4px;
     display: flex;
-    gap: 8px;
     align-items: center;
-    opacity: 0;
-    transition: opacity 0.2s;
-}
-
-.message-bubble:hover .message-metadata {
-    opacity: 1;
-}
-
-/* Copy Button */
-.message-copy-button {
-    margin-left: auto;
-    padding: 0;
-    border: none !important;
-    border-radius: 0;
-    background: none !important;
-    background-color: transparent !important;
-    color: var(--text-faint);
-    cursor: pointer;
-    transition: all 0.15s ease;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    line-height: 1;
-    opacity: 0.7;
-    height: 16px;
-    width: 16px;
-    outline: none !important;
-    box-shadow: none !important;
-    appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    font-size: 0;
-    text-decoration: none;
-    min-width: 0;
-    min-height: 0;
-}
-
-.message-copy-button:hover {
+    gap: 10px;
+    margin-top: 6px;
+    font-size: 12px;
     color: var(--text-muted);
-    opacity: 1;
-    background: none !important;
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
 }
 
-.message-copy-button:focus {
-    background: none !important;
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-}
-
-.message-copy-button:active {
-    background: none !important;
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-}
-
-.message-copy-button.copied {
-    color: var(--text-success);
-    opacity: 1;
-    background: none !important;
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-}
-
-.message-copy-button svg {
-    width: 12px;
-    height: 12px;
+.message-time {
+    font-size: 11px;
 }
 
 .message-status {
-    font-weight: 500;
+    font-size: 11px;
 }
 
 .message-status.error {
@@ -341,7 +277,62 @@
 }
 
 .message-status.streaming {
-    animation: pulse 1.5s infinite;
+    color: var(--interactive-accent);
+}
+
+.message-copy-button {
+    width: 18px;
+    height: 18px;
+    padding: 2px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    border-radius: 3px;
+}
+
+.message-copy-button:hover {
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+}
+
+.message-copy-button.copied {
+    color: var(--text-success);
+}
+
+.message-copy-button svg {
+    width: 100%;
+    height: 100%;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Error Messages */
+.message-error {
+    color: var(--text-error);
+    background-color: var(--background-modifier-error);
+    padding: 10px;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+/* System Messages */
+.message-system {
+    font-size: 0.9em;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 8px;
+    text-align: center;
 }
 
 /* Approval Bubble Styles */
@@ -877,6 +868,75 @@
 
 .context-badge-remove:hover {
 	color: var(--text-normal);
+}
+
+/* Message Segments */
+.message-segments {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	width: 100%;
+}
+
+.message-segment {
+	position: relative;
+	width: 100%;
+}
+
+/* Text segments */
+.message-segment.text-segment {
+	/* Text segments inherit styling from parent */
+}
+
+/* Tool approval segments */
+.message-segment.tool-approval-segment {
+	margin: 8px 0;
+	padding: 12px;
+	background-color: var(--background-primary-alt);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+}
+
+/* Continuation segments */
+.message-segment.continuation::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: -8px;
+	height: 1px;
+	width: 100%;
+	background: var(--background-modifier-border);
+}
+
+/* Segment content */
+.segment-content {
+	width: 100%;
+}
+
+.segment-content p {
+	margin: 0 0 0.5em 0;
+}
+
+.segment-content p:last-child {
+	margin-bottom: 0;
+}
+
+/* Visual separator between different segment types */
+.message-segment + .message-segment.tool-approval-segment {
+	margin-top: 16px;
+}
+
+.message-segment.tool-approval-segment + .message-segment {
+	margin-top: 16px;
+}
+
+/* Approved/Rejected tool segments */
+.tool-approval-segment .enhanced-tool-approval.approved {
+	opacity: 0.8;
+}
+
+.tool-approval-segment .enhanced-tool-approval.rejected {
+	opacity: 0.6;
 }
 
 /* Error Boundary Styles */

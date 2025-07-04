@@ -1,5 +1,6 @@
 import { Tool, ToolContext } from '../types';
 import { z } from 'zod/v3';
+import { useUndoStore, createUndoableCopyOperation } from '../../stores/undoStore';
 
 export class CopyFileTool implements Tool {
   metadata = {
@@ -57,6 +58,15 @@ export class CopyFileTool implements Tool {
       const file = context.app.vault.getAbstractFileByPath(sourcePath);
       if (file) {
         await context.app.vault.copy(file, destinationPath);
+        
+        // Add to undo history
+        const undoOperation = createUndoableCopyOperation(
+          context.app,
+          sourcePath,
+          destinationPath
+        );
+        useUndoStore.getState().addOperation(undoOperation);
+        
         return {
           success: true,
           message: `Successfully copied ${sourcePath} to ${destinationPath}`,
