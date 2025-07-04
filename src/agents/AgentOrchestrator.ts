@@ -33,34 +33,35 @@ export class AgentOrchestrator {
 	 * Convert chat messages to agent input format
 	 */
 	private convertChatHistory(messages: ChatMessage[]): any[] {
-		return messages
-			.map((msg) => {
-				if (msg.role === "user") {
-					return user(msg.content);
-				} else if (msg.role === "assistant") {
-					// Based on the OpenAI SDK error, assistant messages need content as an array
-					// For text content, we'll create a text content item
-					try {
-						// Try using the assistant function with proper format
-						// If it fails, we'll return a formatted object directly
-						return {
-							role: "assistant",
-							content: [{
-								type: "text",
-								text: msg.content
-							}]
-						};
-					} catch (e) {
-						console.warn("Failed to create assistant message:", e);
-						return null;
-					}
-				} else if (msg.role === "system") {
-					return system(msg.content);
+		// Build a conversation context that includes assistant messages
+		const conversationContext: any[] = [];
+		
+		// Add system messages and user messages directly
+		// For assistant messages, we'll include them in a context summary
+		let assistantContext = "";
+		
+		for (const msg of messages) {
+			if (msg.role === "user") {
+				// If we have accumulated assistant context, add it as a system message before the user message
+				if (assistantContext) {
+					conversationContext.push(system(`Previous assistant response: ${assistantContext}`));
+					assistantContext = "";
 				}
-				// Skip unknown message types
-				return null;
-			})
-			.filter(Boolean);
+				conversationContext.push(user(msg.content));
+			} else if (msg.role === "assistant") {
+				// Accumulate assistant responses to add as context
+				assistantContext = msg.content;
+			} else if (msg.role === "system") {
+				conversationContext.push(system(msg.content));
+			}
+		}
+		
+		// Add any remaining assistant context
+		if (assistantContext) {
+			conversationContext.push(system(`Previous assistant response: ${assistantContext}`));
+		}
+		
+		return conversationContext;
 	}
 
 	constructor(app: App, apiKey: string, model = "gpt-4.1", maxTurns = 20) {
@@ -330,6 +331,7 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 			totalMessages: messages.length,
 			messageRoles: messages.map(m => m.role),
 			convertedMessages: agentMessages.length,
+			hasAssistantContext: messages.some(m => m.role === 'assistant'),
 			firstUserMessage: messages.find(m => m.role === 'user')?.content?.substring(0, 100)
 		});
 		
@@ -719,28 +721,14 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 		}
 
 		try {
-			// If we have message history, rebuild the conversation context
-			let resumptionContext;
-			if (messages && messages.length > 0) {
-				// Convert the full message history including the tool approval context
-				const historyMessages = this.convertChatHistory(messages);
-				console.log("[AgentOrchestrator] Rebuilding context for approval with full history:", {
-					historyLength: historyMessages.length,
-					includesAssistant: historyMessages.some(m => m.role === 'assistant')
-				});
-				
-				// Create a new conversation with the full history and the approval state
-				// We need to append the approval action to the conversation
-				resumptionContext = [...historyMessages, state];
-			} else {
-				// Fallback to just using the state
-				resumptionContext = state;
-			}
+			// Resume with the state but ensure we have proper context
+			console.log("[AgentOrchestrator] Resuming after approval with state");
 			
-			// Resume execution with streaming using the full context
+			// The state should already contain the conversation history
+			// We just need to process the approvals
 			const resumedStream = await RetryHandler.withRetry(
 				async () => {
-					return await run(this.conductor, resumptionContext, {
+					return await run(this.conductor, state, {
 						stream: true,
 						maxTurns: this.maxTurns,
 					});
