@@ -38,7 +38,6 @@ export const EnhancedToolApproval: React.FC<EnhancedToolApprovalProps> = ({
 			copy_file: "Copy File",
 			search_vault: "Search Vault",
 			write_file: "Write File",
-			custom_action: "Custom Action",
 		};
 		return nameMap[toolName] || toolName;
 	};
@@ -53,7 +52,6 @@ export const EnhancedToolApproval: React.FC<EnhancedToolApprovalProps> = ({
 			copy_file: "📋",
 			search_vault: "🔍",
 			write_file: "💾",
-			custom_action: "⚡",
 		};
 		return iconMap[toolName] || "🔧";
 	};
@@ -213,25 +211,6 @@ export const EnhancedToolApproval: React.FC<EnhancedToolApprovalProps> = ({
 						{args.query && (
 							<div className="detail-item">
 								<span className="detail-label">Search query:</span> {args.query}
-							</div>
-						)}
-					</div>
-				);
-			
-			case 'custom_action':
-				return (
-					<div className="preview-custom">
-						{args.description && (
-							<div className="detail-item">
-								<span className="detail-label">Action:</span> {args.description}
-							</div>
-						)}
-						{args.content && (
-							<div className="detail-item">
-								<div className="detail-label">Details:</div>
-								<pre className="content-preview">
-									{typeof args.content === 'string' ? args.content : JSON.stringify(args.content, null, 2)}
-								</pre>
 							</div>
 						)}
 					</div>
