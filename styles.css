@@ -3,6 +3,10 @@
     /* Custom ribbon icon styles if needed */
 }
 
+/* Import enhanced approval styles */
+@import 'src/styles/enhanced-approval.css';
+@import 'src/styles/execution-progress.css';
+
 /* Ensure the view takes full height */
 .workspace-leaf-content[data-type="chat-assistant-view"] {
     padding: 0;

@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { ChatMessage } from "../types";
 import { ApprovalBubble } from "./ApprovalBubble";
 import { MarkdownRenderer, Component } from "obsidian";
-import { ToolApprovalBubble } from "./ToolApprovalBubble";
+import { EnhancedToolApproval } from "./EnhancedToolApproval";
 
 interface MessageBubbleProps {
 	message: ChatMessage;
@@ -171,7 +171,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 					message.streamResult.interruptions.length > 0 &&
 					message.approvalStatus === "pending" &&
 					onToolApproval && (
-						<ToolApprovalBubble
+						<EnhancedToolApproval
 							interruptions={message.streamResult.interruptions}
 							onApprove={(approvals) =>
 								onToolApproval(message.id, approvals)
@@ -196,7 +196,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 					message.approvalStatus !== "pending" &&
 					message.streamResult?.interruptions &&
 					message.streamResult.interruptions.length > 0 && (
-						<ToolApprovalBubble
+						<EnhancedToolApproval
 							interruptions={message.streamResult.interruptions}
 							onApprove={() => {}} // No-op for display only
 							onRejectAll={() => {}} // No-op for display only
