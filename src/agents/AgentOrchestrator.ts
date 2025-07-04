@@ -697,6 +697,19 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 
 		const state = stream.state;
 
+		// Log what's in the state before processing
+		console.log('[AgentOrchestrator] Stream state inspection:', {
+			hasHistory: !!state.history,
+			historyLength: state.history?.length,
+			hasMessages: !!state.messages,
+			messagesLength: state.messages?.length,
+			stateKeys: Object.keys(state),
+			interruptionDetails: stream.interruptions.map((i: any) => ({
+				name: i.rawItem?.name || i.name,
+				args: i.rawItem?.arguments || i.arguments
+			}))
+		});
+
 		// Process each interruption
 		for (const interruption of stream.interruptions) {
 			// Try different ID locations
@@ -710,7 +723,8 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 			console.log('[AgentOrchestrator] Processing interruption approval:', {
 				id,
 				approved,
-				interruption: interruption.rawItem?.name || interruption.name
+				interruption: interruption.rawItem?.name || interruption.name,
+				arguments: interruption.rawItem?.arguments || interruption.arguments
 			});
 			
 			if (approved) {
@@ -721,14 +735,54 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 		}
 
 		try {
-			// Resume with the state but ensure we have proper context
-			console.log("[AgentOrchestrator] Resuming after approval with state");
+			// Create a context message about what was approved
+			const approvedTools = [];
+			for (const interruption of stream.interruptions) {
+				const id = interruption.id || 
+					interruption.rawItem?.id || 
+					interruption.rawItem?.callId ||
+					interruption.rawItem?.providerData?.id;
+				
+				if (approvals.get(id)) {
+					const toolName = interruption.rawItem?.name || interruption.name;
+					const args = interruption.rawItem?.arguments || interruption.arguments;
+					approvedTools.push({
+						tool: toolName,
+						arguments: args
+					});
+				}
+			}
 			
-			// The state should already contain the conversation history
-			// We just need to process the approvals
+			console.log("[AgentOrchestrator] Approved tools:", approvedTools);
+			
+			// Create an approval context message
+			let approvalContext = "";
+			if (approvedTools.length > 0) {
+				approvalContext = "The following tools have been approved and should now be executed:\n";
+				approvedTools.forEach(tool => {
+					approvalContext += `- ${tool.tool} with arguments: ${JSON.stringify(tool.arguments)}\n`;
+				});
+			}
+			
+			// If we have messages, rebuild the context with the approval information
+			let resumptionContext;
+			if (messages && messages.length > 0 && approvalContext) {
+				const historyMessages = this.convertChatHistory(messages);
+				// Add the approval context as a system message
+				historyMessages.push(system(approvalContext));
+				// Then add the state
+				resumptionContext = [...historyMessages, state];
+				console.log("[AgentOrchestrator] Resuming with full context + approval info");
+			} else {
+				// Just use the state
+				resumptionContext = state;
+				console.log("[AgentOrchestrator] Resuming with state only");
+			}
+			
+			// Resume execution with the enhanced context
 			const resumedStream = await RetryHandler.withRetry(
 				async () => {
-					return await run(this.conductor, state, {
+					return await run(this.conductor, resumptionContext, {
 						stream: true,
 						maxTurns: this.maxTurns,
 					});
