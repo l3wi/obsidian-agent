@@ -20,6 +20,10 @@ import {
 	CopyFileTool,
 } from "../tools/vault";
 import { WebSearchTool, CodeInterpreterTool } from "../tools/web";
+import { ErrorFactory } from "../errors/ErrorFactory";
+import { RetryHandler } from "../utils/RetryHandler";
+import { CircuitBreaker, CircuitState } from "../utils/CircuitBreaker";
+import { ChatAssistantError, ErrorCode } from "../errors/types";
 
 export class AgentOrchestrator {
 	private app: App;
@@ -31,6 +35,7 @@ export class AgentOrchestrator {
 	private provider: OpenAIProvider;
 	private toolRegistry: ToolRegistry;
 	private settings: ChatAssistantSettings = DEFAULT_SETTINGS;
+	private circuitBreaker: CircuitBreaker;
 
 	/**
 	 * Convert chat messages to agent input format
@@ -66,6 +71,16 @@ export class AgentOrchestrator {
 		console.log("[AgentOrchestrator] Initialized with:", {
 			model,
 			maxTurns,
+		});
+
+		// Initialize circuit breaker for API calls
+		this.circuitBreaker = new CircuitBreaker({
+			failureThreshold: 5,
+			resetTimeout: 60000, // 1 minute
+			monitoringPeriod: 300000, // 5 minutes
+			onStateChange: (oldState, newState) => {
+				console.log(`[AgentOrchestrator] Circuit breaker state changed: ${oldState} -> ${newState}`);
+			}
 		});
 
 		// Create OpenAI client with browser support for Obsidian
@@ -191,11 +206,60 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 		stream?: any; // StreamedRunResult
 	}> {
 		const agentMessages = this.convertChatHistory(messages);
-		return this.processMessageStream(
-			agentMessages,
-			onChunk,
-			onToolCall,
-			onApprovalNeeded
+		
+		console.log("[AgentOrchestrator] Processing messages with history:", {
+			totalMessages: messages.length,
+			messageRoles: messages.map(m => m.role),
+			convertedMessages: agentMessages.length,
+			hasAssistantContext: messages.some(m => m.role === 'assistant'),
+			firstUserMessage: messages.find(m => m.role === 'user')?.content?.substring(0, 100)
+		});
+		
+		// Wrap in retry handler with circuit breaker
+		return RetryHandler.withRetry(
+			async () => {
+				return this.circuitBreaker.execute(async () => {
+					try {
+						return await this.processMessageStream(
+							agentMessages,
+							onChunk,
+							onToolCall,
+							onApprovalNeeded
+						);
+					} catch (error) {
+						// Transform API errors to our error types
+						if (error.status === 401) {
+							throw ErrorFactory.invalidApiKey({ 
+								endpoint: 'openai',
+								model: this.model 
+							});
+						} else if (error.status === 429) {
+							const retryAfter = error.headers?.['retry-after'] 
+								? parseInt(error.headers['retry-after']) * 1000 
+								: 60000;
+							throw ErrorFactory.apiRateLimit(retryAfter, {
+								endpoint: 'openai',
+								model: this.model
+							});
+						} else if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
+							throw ErrorFactory.networkTimeout({
+								endpoint: 'openai',
+								model: this.model,
+								originalError: error.message
+							});
+						}
+						
+						// Re-throw unknown errors
+						throw error;
+					}
+				});
+			},
+			{
+				maxAttempts: 3,
+				onRetry: (attempt, error) => {
+					console.log(`[AgentOrchestrator] Retry attempt ${attempt} after error:`, error);
+				}
+			}
 		);
 	}
 
@@ -290,6 +354,15 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 				"Error processing streaming message through agents:",
 				error
 			);
+			
+			// Check for common SDK errors
+			if (error.message?.includes("Cannot read properties of undefined")) {
+				throw ErrorFactory.toolValidationFailed('OpenAI SDK', 
+					'Message format error - assistant messages in history are not currently supported', 
+					{ originalError: error.message }
+				);
+			}
+			
 			throw error;
 		}
 	}
@@ -447,6 +520,32 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 	}
 
 	/**
+	 * Handle tool approval for streaming interruptions with full message history
+	 */
+	async handleStreamApprovalWithHistory(
+		stream: any,
+		approvals: Map<string, boolean>,
+		messages: ChatMessage[],
+		onChunk: (chunk: string) => void
+	): Promise<{
+		response: string;
+		requiresApproval?: boolean;
+		approvalData?: ApprovalRequest;
+		stream?: any; // StreamedRunResult
+	}> {
+		// Log the context we're working with
+		console.log("[AgentOrchestrator] Handling stream approval with history:", {
+			messageCount: messages.length,
+			messageRoles: messages.map(m => m.role),
+			approvalCount: approvals.size,
+			hasStreamState: !!stream?.state
+		});
+
+		// Use the regular method that includes message history
+		return this.handleStreamApproval(stream, approvals, onChunk);
+	}
+
+	/**
 	 * Handle tool approval for streaming interruptions
 	 */
 	async handleStreamApproval(
@@ -459,6 +558,15 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 		approvalData?: ApprovalRequest;
 		stream?: any; // StreamedRunResult
 	}> {
+		// Validate stream state
+		if (!stream || !stream.state) {
+			throw ErrorFactory.streamStateInvalid({
+				hasStream: !!stream,
+				hasState: !!stream?.state,
+				hasInterruptions: !!stream?.interruptions
+			});
+		}
+		
 		if (!stream.interruptions || stream.interruptions.length === 0) {
 			return {
 				response: "No approvals needed",
@@ -466,15 +574,20 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 			};
 		}
 
-		if (!stream.state) {
-			console.error('[AgentOrchestrator] No state found in stream result');
-			return {
-				response: "Error: Unable to continue - no state found",
-				requiresApproval: false,
-			};
-		}
-
 		const state = stream.state;
+
+		// Log what's in the state before processing
+		console.log('[AgentOrchestrator] Stream state inspection:', {
+			hasHistory: !!state.history,
+			historyLength: state.history?.length,
+			hasMessages: !!state.messages,
+			messagesLength: state.messages?.length,
+			stateKeys: Object.keys(state),
+			interruptionDetails: stream.interruptions.map((i: any) => ({
+				name: i.rawItem?.name || i.name,
+				args: i.rawItem?.arguments || i.arguments
+			}))
+		});
 
 		// Process each interruption
 		for (const interruption of stream.interruptions) {
@@ -485,13 +598,18 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 				interruption.rawItem?.providerData?.id;
 			
 			const approved = approvals.get(id) ?? false;
+			const status = interruption.rawItem?.status || interruption.status;
 			
 			console.log('[AgentOrchestrator] Processing interruption approval:', {
 				id,
 				approved,
-				interruption: interruption.rawItem?.name || interruption.name
+				interruption: interruption.rawItem?.name || interruption.name,
+				arguments: interruption.rawItem?.arguments || interruption.arguments,
+				status: status,
+				isCompleted: status === 'completed'
 			});
 			
+			// Even if completed, we still need to acknowledge the approval/rejection
 			if (approved) {
 				state.approve(interruption);
 			} else {
@@ -499,56 +617,111 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 			}
 		}
 
-		// Resume execution with streaming using the existing state which includes history
-		const resumedStream = await run(this.conductor, state, {
-			stream: true,
-			maxTurns: this.maxTurns,
-		});
-
-		let fullResponse = "";
-		let currentText = "";
-
-		// Process the resumed stream
-		for await (const event of resumedStream) {
-			if (event.type === "raw_model_stream_event") {
-				const data = event.data;
-				if (
-					"type" in data &&
-					data.type === "output_text_delta" &&
-					"delta" in data
-				) {
-					onChunk(data.delta as string);
-					currentText += data.delta as string;
+		try {
+			// Log approved tools for debugging
+			const approvedTools = [];
+			for (const interruption of stream.interruptions) {
+				const id = interruption.id || 
+					interruption.rawItem?.id || 
+					interruption.rawItem?.callId ||
+					interruption.rawItem?.providerData?.id;
+				
+				if (approvals.get(id)) {
+					const toolName = interruption.rawItem?.name || interruption.name;
+					const args = interruption.rawItem?.arguments || interruption.arguments;
+					approvedTools.push({
+						tool: toolName,
+						arguments: args
+					});
 				}
 			}
-		}
+			
+			console.log("[AgentOrchestrator] Approved tools:", approvedTools);
+			console.log("[AgentOrchestrator] Resuming with state after approvals");
+			
+			// Resume execution with the state
+			// Note: The state object from the SDK already contains all necessary context
+			const resumedStream = await RetryHandler.withRetry(
+				async () => {
+					try {
+						return await run(this.conductor, state, {
+							stream: true,
+							maxTurns: this.maxTurns,
+						});
+					} catch (error) {
+						// Check for structuredClone error
+						if (error.message?.includes('structuredClone') || error.message?.includes('could not be cloned')) {
+							console.error('[AgentOrchestrator] StructuredClone error detected:', error);
+							console.error('[AgentOrchestrator] State type:', typeof state);
+							console.error('[AgentOrchestrator] State keys:', Object.keys(state));
+							// Try to identify what can't be cloned
+							for (const key of Object.keys(state)) {
+								const value = state[key];
+								const valueType = typeof value;
+								if (valueType === 'function' || (valueType === 'object' && value?.constructor?.name === 'AsyncFunction')) {
+									console.error(`[AgentOrchestrator] Non-cloneable property found: ${key} (${valueType})`);
+								}
+							}
+						}
+						throw error;
+					}
+				},
+				{
+					maxAttempts: 2,
+					retryableErrors: [ErrorCode.STREAM_RESUME_FAILED]
+				}
+			);
 
-		await resumedStream.completed;
-		// The final output is in the currentText we accumulated
-		fullResponse = currentText;
+			let fullResponse = "";
+			let currentText = "";
 
-		// Check for more interruptions
-		if (
-			resumedStream.interruptions &&
-			resumedStream.interruptions.length > 0
-		) {
+			// Process the resumed stream
+			for await (const event of resumedStream) {
+				if (event.type === "raw_model_stream_event") {
+					const data = event.data;
+					if (
+						"type" in data &&
+						data.type === "output_text_delta" &&
+						"delta" in data
+					) {
+						onChunk(data.delta as string);
+						currentText += data.delta as string;
+					}
+				}
+			}
+
+			await resumedStream.completed;
+			// The final output is in the currentText we accumulated
+			fullResponse = currentText;
+
+			// Check for more interruptions
+			if (
+				resumedStream.interruptions &&
+				resumedStream.interruptions.length > 0
+			) {
+				return {
+					response: fullResponse,
+					requiresApproval: true,
+					approvalData: {
+						id: Date.now().toString(),
+						type: "create",
+						description: "Additional tool approval required",
+						content: JSON.stringify(resumedStream.interruptions),
+					},
+					stream: resumedStream,
+				};
+			}
+
 			return {
 				response: fullResponse,
-				requiresApproval: true,
-				approvalData: {
-					id: Date.now().toString(),
-					type: "create",
-					description: "Additional tool approval required",
-					content: JSON.stringify(resumedStream.interruptions),
-				},
-				stream: resumedStream,
+				requiresApproval: false,
 			};
+		} catch (error) {
+			throw ErrorFactory.streamResumeFailure(error as Error, {
+				approvalCount: approvals.size,
+				interruptionCount: stream.interruptions.length,
+			});
 		}
-
-		return {
-			response: fullResponse,
-			requiresApproval: false,
-		};
 	}
 
 	/**

@@ -34,7 +34,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 	({ plugin, initialFiles }, ref) => {
 		// Use stores instead of local state
 		const { messages, addMessage, updateMessage, clearMessages, isProcessing, setProcessing } = useConversationStore();
-		const { currentTool, getToolHistory, clearPendingApprovals } = useToolStore();
+		const { currentTool, getToolHistory, clearPendingApprovals, getPendingApprovals, hasApprovalTools } = useToolStore();
 		const { contextFiles, setContextFiles, removeContextFile } = useContextStore();
 		const { startStreaming, updateStreamingContent, completeStreaming, handleToolCall } = useStreamingMessage();
 		const { undo, redo, canUndo, canRedo } = useUndoStore();
@@ -349,6 +349,9 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 				// Start streaming message
 				startStreaming(assistantMessageId, null);
 
+				// Get pending approvals for logging
+				const pendingApprovals = getPendingApprovals();
+
 				// Process through agent orchestrator with streaming, including history
 				const result =
 					await agentOrchestrator.current.processMessagesWithHistoryStream(
@@ -478,9 +481,10 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 
 				// Handle the approval with streaming
 				const result =
-					await agentOrchestrator.current.handleStreamApproval(
+					await agentOrchestrator.current.handleStreamApprovalWithHistory(
 						message.streamResult,
 						approvals,
+						messages, // Pass full message history
 						(chunk) => {
 							// Accumulate chunks
 							continuationContent += chunk;

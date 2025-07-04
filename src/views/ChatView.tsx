@@ -2,6 +2,8 @@ import { ItemView, WorkspaceLeaf } from 'obsidian';
 import * as React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { ChatInterface } from '../components/ChatInterface';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+import { ChatErrorFallback } from '../components/ChatErrorFallback';
 import ObsidianChatAssistant from '../main';
 
 export const CHAT_VIEW_TYPE = 'chat-assistant-view';
@@ -42,7 +44,13 @@ export class ChatView extends ItemView {
 		this.root = createRoot(reactContainer);
 		this.root.render(
 			<React.StrictMode>
-				<ChatInterface plugin={this.plugin} ref={this.chatInterfaceRef} initialFiles={initialFiles} />
+				<ErrorBoundary
+					fallback={(error, reset) => (
+						<ChatErrorFallback error={error} onReset={reset} />
+					)}
+				>
+					<ChatInterface plugin={this.plugin} ref={this.chatInterfaceRef} initialFiles={initialFiles} />
+				</ErrorBoundary>
 			</React.StrictMode>
 		);
 	}
