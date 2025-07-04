@@ -1,6 +1,5 @@
 import * as React from "react";
 import {
-	useState,
 	useRef,
 	useEffect,
 	forwardRef,
@@ -17,6 +16,13 @@ import { AgentOrchestrator } from "../agents/AgentOrchestrator";
 
 import { TFile } from "obsidian";
 import { ContextBadges } from "./ContextBadges";
+import { 
+	useConversationStore, 
+	useToolStore, 
+	useStreamStore, 
+	useContextStore 
+} from "../stores";
+import { useStreamingMessage } from "../hooks/useStreamingMessage";
 
 interface ChatInterfaceProps {
 	plugin: ObsidianChatAssistant;
@@ -25,14 +31,20 @@ interface ChatInterfaceProps {
 
 export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 	({ plugin, initialFiles }, ref) => {
-		const [messages, setMessages] = useState<ChatMessage[]>([]);
-		const [isProcessing, setIsProcessing] = useState(false);
-		const [currentTool, setCurrentTool] = useState<string | null>(null);
-		const [toolHistory, setToolHistory] = useState<string[]>([]);
-		const [contextFiles, setContextFiles] = useState<TFile[]>(
-			initialFiles || [],
-		);
+		// Use stores instead of local state
+		const { messages, addMessage, updateMessage, clearMessages, isProcessing, setProcessing } = useConversationStore();
+		const { currentTool, getToolHistory, clearPendingApprovals } = useToolStore();
+		const { contextFiles, setContextFiles, removeContextFile } = useContextStore();
+		const { startStreaming, updateStreamingContent, completeStreaming, handleToolCall } = useStreamingMessage();
+		
 		const messagesEndRef = useRef<HTMLDivElement>(null);
+		
+		// Initialize context files if provided
+		useEffect(() => {
+			if (initialFiles && initialFiles.length > 0) {
+				setContextFiles(initialFiles);
+			}
+		}, [initialFiles, setContextFiles]);
 
 		// Initialize tool router and approval manager
 		const approvalManager = useRef<ApprovalManager>(
@@ -65,7 +77,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 		}, [plugin.settings.approvalRequired]);
 
 		const handleRemoveFileFromContext = (file: TFile) => {
-			setContextFiles((prev) => prev.filter((f) => f.path !== file.path));
+			removeContextFile(file.path);
 		};
 
 		// Expose processCommand method to parent
@@ -79,8 +91,8 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 					timestamp: Date.now(),
 					status: "complete",
 				};
-				setMessages((prev) => [...prev, userMessage]);
-				setIsProcessing(true);
+				addMessage(userMessage);
+				setProcessing(true);
 
 				try {
 					// Process the specific command
@@ -116,7 +128,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 							? "pending"
 							: undefined,
 					};
-					setMessages((prev) => [...prev, assistantMessage]);
+					addMessage(assistantMessage);
 				} catch (error) {
 					console.error("Error processing command:", error);
 					const errorMessage: ChatMessage = {
@@ -127,9 +139,9 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 						status: "error",
 						error: error.message,
 					};
-					setMessages((prev) => [...prev, errorMessage]);
+					addMessage(errorMessage);
 				} finally {
-					setIsProcessing(false);
+					setProcessing(false);
 				}
 			},
 		}));
@@ -311,13 +323,13 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 				? [contextMessage, ...messages, userMessage]
 				: [...messages, userMessage];
 
-			setMessages((prev) => [...prev, userMessage]);
-			setIsProcessing(true);
+			addMessage(userMessage);
+			setProcessing(true);
 
 			// Process the message
 			try {
-				// Reset tool history for new message
-				setToolHistory([]);
+				// Clear any pending approvals from previous messages
+				clearPendingApprovals();
 
 				if (!agentOrchestrator.current) {
 					const assistantMessage: ChatMessage = {
@@ -328,20 +340,12 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 						timestamp: Date.now(),
 						status: "complete",
 					};
-					setMessages((prev) => [...prev, assistantMessage]);
+					addMessage(assistantMessage);
 					return;
 				}
 
 				// Create assistant message with streaming status
 				const assistantMessageId = (Date.now() + 1).toString();
-				const assistantMessage: ChatMessage = {
-					id: assistantMessageId,
-					role: "assistant",
-					content: "",
-					timestamp: Date.now(),
-					status: "streaming",
-				};
-				setMessages((prev) => [...prev, assistantMessage]);
 
 				// Get all messages including the current user message
 				const allMessages = messagesWithContext;
@@ -350,37 +354,20 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 				const pendingApprovals: any[] = [];
 				let hasApprovalTools = false;
 
+				// Start streaming message
+				startStreaming(assistantMessageId, null);
+
 				// Process through agent orchestrator with streaming, including history
 				const result =
 					await agentOrchestrator.current.processMessagesWithHistoryStream(
 						allMessages,
 						(chunk) => {
 							// Update message content as chunks arrive
-							setMessages((prev) =>
-								prev.map((msg) =>
-									msg.id === assistantMessageId
-										? {
-												...msg,
-												content: msg.content + chunk,
-											}
-										: msg,
-								),
-							);
+							updateStreamingContent(assistantMessageId, chunk);
 						},
 						(toolName, args) => {
-							// Handle tool calls with filename context
-							let toolDisplay = toolName;
-							
-							// Extract filename for better context
-							if (args) {
-								const fileName = args.path?.split('/').pop() || args.sourcePath?.split('/').pop();
-								if (fileName) {
-									toolDisplay = `${toolName}: ${fileName}`;
-								}
-							}
-							
-							setCurrentTool(toolDisplay);
-							setToolHistory((prev) => [...prev, toolDisplay]);
+							// Handle tool calls
+							handleToolCall(toolName, args);
 							console.log(`Using tool: ${toolName}`, args);
 
 							// Check if this tool needs approval
@@ -408,17 +395,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 					);
 
 				// First, complete the assistant's response message
-				setMessages((prev) =>
-					prev.map((msg) =>
-						msg.id === assistantMessageId
-							? {
-									...msg,
-									content: result.response,
-									status: "complete",
-								}
-							: msg,
-					),
-				);
+				completeStreaming(assistantMessageId, result.response);
 
 				// Then, if there are tool approvals needed, create a separate message for them
 				if (hasApprovalTools && pendingApprovals.length > 0) {
@@ -433,7 +410,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 						},
 						approvalStatus: "pending",
 					};
-					setMessages((prev) => [...prev, toolApprovalMessage]);
+					addMessage(toolApprovalMessage);
 				} else if (result.requiresApproval) {
 					// Handle non-streaming approvals
 					const approvalMessage: ChatMessage = {
@@ -445,7 +422,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 						approvalRequest: result.approvalData,
 						approvalStatus: "pending",
 					};
-					setMessages((prev) => [...prev, approvalMessage]);
+					addMessage(approvalMessage);
 				}
 			} catch (error) {
 				console.error("Error processing message:", error);
@@ -457,9 +434,9 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 					status: "error",
 					error: error.message,
 				};
-				setMessages((prev) => [...prev, errorMessage]);
+				addMessage(errorMessage);
 			} finally {
-				setIsProcessing(false);
+				setProcessing(false);
 			}
 		};
 
@@ -468,23 +445,14 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 			approvals: Map<string, boolean>,
 		) => {
 			// Update the message status while preserving streamResult
-			setMessages((prev) =>
-				prev.map((msg) =>
-					msg.id === messageId
-						? { 
-							...msg, 
-							approvalStatus: "approved" as const,
-							// Preserve the streamResult to show in the approved state
-							streamResult: msg.streamResult 
-						}
-						: msg,
-				),
-			);
+			updateMessage(messageId, { 
+				approvalStatus: "approved" as const,
+			});
 
 			// Find the message with the stream result
 			const message = messages.find((m) => m.id === messageId);
 			if (message?.streamResult && agentOrchestrator.current) {
-				setIsProcessing(true);
+				setProcessing(true);
 				try {
 					// Create a new message for the resumed response
 					const resumedMessageId = Date.now().toString();
@@ -495,7 +463,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 						timestamp: Date.now(),
 						status: "streaming",
 					};
-					setMessages((prev) => [...prev, resumedMessage]);
+					startStreaming(resumedMessageId, message.streamResult);
 
 					// Handle the approval with streaming
 					const result =
@@ -504,17 +472,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 							approvals,
 							(chunk) => {
 								// Update message content as chunks arrive
-								setMessages((prev) =>
-									prev.map((msg) =>
-										msg.id === resumedMessageId
-											? {
-													...msg,
-													content:
-														msg.content + chunk,
-												}
-											: msg,
-									),
-								);
+								updateStreamingContent(resumedMessageId, chunk);
 							},
 						);
 
@@ -545,50 +503,36 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 										) as TFile,
 								),
 							);
-							setContextFiles((prev) => [
-								...prev.filter(
-									(f) => !modifiedFiles.includes(f.path),
-								),
-								...newFiles,
-							]);
+							const filteredFiles = contextFiles.filter(
+								(f) => !modifiedFiles.includes(f.path)
+							);
+							setContextFiles([...filteredFiles, ...newFiles]);
 						}
 					}
 
 					// Update final message
-					setMessages((prev) =>
-						prev.map((msg) =>
-							msg.id === resumedMessageId
-								? {
-										...msg,
-										content: result.response,
-										status: "complete",
-										approvalRequest: result.approvalData,
-										approvalStatus: result.requiresApproval
-											? "pending"
-											: undefined,
-										streamResult: result.stream,
-									}
-								: msg,
-						),
-					);
+					completeStreaming(resumedMessageId, result.response);
+					
+					// Add approval message if needed
+					if (result.requiresApproval) {
+						updateMessage(resumedMessageId, {
+							approvalRequest: result.approvalData,
+							approvalStatus: "pending",
+							streamResult: result.stream,
+						});
+					}
 				} catch (error) {
 					console.error("Error handling tool approval:", error);
 					new Notice("Error processing tool approval");
 				} finally {
-					setIsProcessing(false);
+					setProcessing(false);
 				}
 			}
 		};
 
 		const handleApprove = async (messageId: string) => {
 			// Update the message status
-			setMessages((prev) =>
-				prev.map((msg) =>
-					msg.id === messageId
-						? { ...msg, approvalStatus: "approved" as const }
-						: msg,
-				),
-			);
+			updateMessage(messageId, { approvalStatus: "approved" as const });
 
 			// Find the message and execute the approved action
 			const message = messages.find((m) => m.id === messageId);
@@ -607,7 +551,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 						timestamp: Date.now(),
 						status: "complete",
 					};
-					setMessages((prev) => [...prev, resultMessage]);
+					addMessage(resultMessage);
 				} catch (error) {
 					// Fallback to approval manager
 					const result =
@@ -622,25 +566,14 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 						timestamp: Date.now(),
 						status: result.success ? "complete" : "error",
 					};
-					setMessages((prev) => [...prev, resultMessage]);
+					addMessage(resultMessage);
 				}
 			}
 		};
 
 		const handleReject = async (messageId: string) => {
 			// Update the message status while preserving streamResult
-			setMessages((prev) =>
-				prev.map((msg) =>
-					msg.id === messageId
-						? { 
-							...msg, 
-							approvalStatus: "rejected" as const,
-							// Preserve the streamResult to show in the rejected state
-							streamResult: msg.streamResult
-						}
-						: msg,
-				),
-			);
+			updateMessage(messageId, { approvalStatus: "rejected" as const });
 
 			// Add a follow-up message
 			const resultMessage: ChatMessage = {
@@ -650,11 +583,11 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 				timestamp: Date.now(),
 				status: "complete",
 			};
-			setMessages((prev) => [...prev, resultMessage]);
+			addMessage(resultMessage);
 		};
 
 		const handleClearChat = () => {
-			setMessages([]);
+			clearMessages();
 		};
 
 		return (
@@ -716,7 +649,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 							}
 							toolHistory={
 								message.status === "streaming"
-									? toolHistory
+									? getToolHistory()
 									: undefined
 							}
 						/>
