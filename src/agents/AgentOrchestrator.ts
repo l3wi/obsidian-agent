@@ -730,12 +730,7 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 				isCompleted: status === 'completed'
 			});
 			
-			// Skip if already completed
-			if (status === 'completed') {
-				console.warn('[AgentOrchestrator] Skipping already completed interruption:', id);
-				continue;
-			}
-			
+			// Even if completed, we still need to acknowledge the approval/rejection
 			if (approved) {
 				state.approve(interruption);
 			} else {
@@ -744,7 +739,7 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 		}
 
 		try {
-			// Create a context message about what was approved
+			// Log approved tools for debugging
 			const approvedTools = [];
 			for (const interruption of stream.interruptions) {
 				const id = interruption.id || 
@@ -763,52 +758,34 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 			}
 			
 			console.log("[AgentOrchestrator] Approved tools:", approvedTools);
+			console.log("[AgentOrchestrator] Resuming with state after approvals");
 			
-			// Create an approval context message
-			let approvalContext = "";
-			if (approvedTools.length > 0) {
-				approvalContext = "The following tools have been approved and should now be executed:\n";
-				approvedTools.forEach(tool => {
-					approvalContext += `- ${tool.tool} with arguments: ${JSON.stringify(tool.arguments)}\n`;
-				});
-			}
-			
-			// If we have messages, rebuild the context with the approval information
-			let resumptionContext;
-			if (messages && messages.length > 0 && approvalContext) {
-				const historyMessages = this.convertChatHistory(messages);
-				// Add the approval context as a system message
-				historyMessages.push(system(approvalContext));
-				// Then add the state
-				resumptionContext = [...historyMessages, state];
-				console.log("[AgentOrchestrator] Resuming with full context + approval info");
-			} else {
-				// Just use the state
-				resumptionContext = state;
-				console.log("[AgentOrchestrator] Resuming with state only");
-			}
-			
-			// Log what we're about to send to the SDK
-			console.log("[AgentOrchestrator] Final resumption context:", {
-				contextType: Array.isArray(resumptionContext) ? 'array' : typeof resumptionContext,
-				contextLength: Array.isArray(resumptionContext) ? resumptionContext.length : 'N/A',
-				hasState: resumptionContext === state,
-				contextPreview: Array.isArray(resumptionContext) ? 
-					resumptionContext.slice(0, 3).map(item => ({
-						type: item.type || item.role || 'unknown',
-						contentPreview: typeof item.content === 'string' ? 
-							item.content.substring(0, 50) : 
-							JSON.stringify(item).substring(0, 50)
-					})) : 'Not an array'
-			});
-
-			// Resume execution with the enhanced context
+			// Resume execution with the state
+			// Note: The state object from the SDK already contains all necessary context
 			const resumedStream = await RetryHandler.withRetry(
 				async () => {
-					return await run(this.conductor, resumptionContext, {
-						stream: true,
-						maxTurns: this.maxTurns,
-					});
+					try {
+						return await run(this.conductor, state, {
+							stream: true,
+							maxTurns: this.maxTurns,
+						});
+					} catch (error) {
+						// Check for structuredClone error
+						if (error.message?.includes('structuredClone') || error.message?.includes('could not be cloned')) {
+							console.error('[AgentOrchestrator] StructuredClone error detected:', error);
+							console.error('[AgentOrchestrator] State type:', typeof state);
+							console.error('[AgentOrchestrator] State keys:', Object.keys(state));
+							// Try to identify what can't be cloned
+							for (const key of Object.keys(state)) {
+								const value = state[key];
+								const valueType = typeof value;
+								if (valueType === 'function' || (valueType === 'object' && value?.constructor?.name === 'AsyncFunction')) {
+									console.error(`[AgentOrchestrator] Non-cloneable property found: ${key} (${valueType})`);
+								}
+							}
+						}
+						throw error;
+					}
 				},
 				{
 					maxAttempts: 2,

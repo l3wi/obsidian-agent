@@ -409,6 +409,15 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 
 				// Check for SDK interruptions first
 				if (result.stream?.interruptions && result.stream.interruptions.length > 0) {
+					// Log the interruption status
+					console.log('[ChatInterface] SDK interruptions status:', 
+						result.stream.interruptions.map((i: any) => ({
+							name: i.rawItem?.name || i.name,
+							status: i.rawItem?.status || i.status,
+							needsApproval: i.needsApproval
+						}))
+					);
+					
 					// Use the actual SDK interruptions
 					const toolApprovalMessage: ChatMessage = {
 						id: Date.now().toString() + "-tool-approval",
