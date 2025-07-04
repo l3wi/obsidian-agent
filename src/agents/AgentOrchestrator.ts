@@ -719,13 +719,22 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 				interruption.rawItem?.providerData?.id;
 			
 			const approved = approvals.get(id) ?? false;
+			const status = interruption.rawItem?.status || interruption.status;
 			
 			console.log('[AgentOrchestrator] Processing interruption approval:', {
 				id,
 				approved,
 				interruption: interruption.rawItem?.name || interruption.name,
-				arguments: interruption.rawItem?.arguments || interruption.arguments
+				arguments: interruption.rawItem?.arguments || interruption.arguments,
+				status: status,
+				isCompleted: status === 'completed'
 			});
+			
+			// Skip if already completed
+			if (status === 'completed') {
+				console.warn('[AgentOrchestrator] Skipping already completed interruption:', id);
+				continue;
+			}
 			
 			if (approved) {
 				state.approve(interruption);
@@ -779,6 +788,20 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 				console.log("[AgentOrchestrator] Resuming with state only");
 			}
 			
+			// Log what we're about to send to the SDK
+			console.log("[AgentOrchestrator] Final resumption context:", {
+				contextType: Array.isArray(resumptionContext) ? 'array' : typeof resumptionContext,
+				contextLength: Array.isArray(resumptionContext) ? resumptionContext.length : 'N/A',
+				hasState: resumptionContext === state,
+				contextPreview: Array.isArray(resumptionContext) ? 
+					resumptionContext.slice(0, 3).map(item => ({
+						type: item.type || item.role || 'unknown',
+						contentPreview: typeof item.content === 'string' ? 
+							item.content.substring(0, 50) : 
+							JSON.stringify(item).substring(0, 50)
+					})) : 'Not an array'
+			});
+
 			// Resume execution with the enhanced context
 			const resumedStream = await RetryHandler.withRetry(
 				async () => {

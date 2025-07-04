@@ -444,6 +444,12 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 			messageId: string,
 			approvals: Map<string, boolean>,
 		) => {
+			console.log("[ChatInterface] handleToolApproval called with:", {
+				messageId,
+				approvalCount: approvals.size,
+				approvalDetails: Array.from(approvals.entries())
+			});
+
 			// Update the message status while preserving streamResult
 			updateMessage(messageId, { 
 				approvalStatus: "approved" as const,
@@ -451,11 +457,26 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 
 			// Find the message with the stream result
 			const message = messages.find((m) => m.id === messageId);
+			console.log("[ChatInterface] Found message:", {
+				hasMessage: !!message,
+				hasStreamResult: !!message?.streamResult,
+				hasInterruptions: !!message?.streamResult?.interruptions,
+				interruptionCount: message?.streamResult?.interruptions?.length,
+				messageContent: message?.content?.substring(0, 100)
+			});
+
 			if (message?.streamResult && agentOrchestrator.current) {
 				setProcessing(true);
+				
+				// Create a new message for the resumed response
+				const resumedMessageId = Date.now().toString();
+				
 				try {
-					// Create a new message for the resumed response
-					const resumedMessageId = Date.now().toString();
+					// Log the interruptions we're about to approve
+					console.log("[ChatInterface] Stream interruptions:", 
+						JSON.stringify(message.streamResult.interruptions, null, 2)
+					);
+
 					const resumedMessage: ChatMessage = {
 						id: resumedMessageId,
 						role: "assistant",
@@ -464,6 +485,12 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 						status: "streaming",
 					};
 					startStreaming(resumedMessageId, message.streamResult);
+
+					console.log("[ChatInterface] Calling handleStreamApprovalWithHistory with:", {
+						messageCount: messages.length,
+						messageRoles: messages.map(m => m.role),
+						lastUserMessage: messages.filter(m => m.role === 'user').pop()?.content?.substring(0, 100)
+					});
 
 					// Handle the approval with streaming
 					// Pass the full conversation history to maintain context
@@ -524,8 +551,19 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 						});
 					}
 				} catch (error) {
-					console.error("Error handling tool approval:", error);
-					new Notice("Error processing tool approval");
+					console.error("[ChatInterface] Error handling tool approval:", error);
+					console.error("[ChatInterface] Error details:", {
+						errorMessage: error.message,
+						errorStack: error.stack,
+						errorType: error.constructor.name
+					});
+					new Notice(`Error processing tool approval: ${error.message}`);
+					
+					// Update the resumed message with error
+					updateMessage(resumedMessageId, {
+						status: "error",
+						error: error.message
+					});
 				} finally {
 					setProcessing(false);
 				}
