@@ -16,6 +16,9 @@ export const ToolApprovalBubble: React.FC<ToolApprovalProps> = ({
 	// Debug log to see the structure
 	console.log('ToolApprovalBubble interruptions:', interruptions);
 	const handleApproveAll = () => {
+		console.log('[ToolApprovalBubble] handleApproveAll clicked');
+		console.log('[ToolApprovalBubble] interruptions:', interruptions);
+		
 		const allApproved = new Map<string, boolean>();
 		interruptions.forEach((interruption) => {
 			// Get the correct ID based on the interruption structure
@@ -24,10 +27,23 @@ export const ToolApprovalBubble: React.FC<ToolApprovalProps> = ({
 				interruption.rawItem?.callId ||
 				interruption.rawItem?.providerData?.id;
 			
+			console.log('[ToolApprovalBubble] Processing interruption for approval:', {
+				id,
+				hasId: !!id,
+				interruptionType: interruption.type,
+				rawItemName: interruption.rawItem?.name
+			});
+			
 			if (id) {
 				allApproved.set(id, true);
 			}
 		});
+		
+		console.log('[ToolApprovalBubble] Calling onApprove with approvals:', {
+			approvalCount: allApproved.size,
+			approvals: Array.from(allApproved.entries())
+		});
+		
 		onApprove(allApproved);
 	};
 

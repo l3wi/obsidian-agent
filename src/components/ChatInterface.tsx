@@ -397,8 +397,38 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 				// First, complete the assistant's response message
 				completeStreaming(assistantMessageId, result.response);
 
-				// Then, if there are tool approvals needed, create a separate message for them
-				if (hasApprovalTools && pendingApprovals.length > 0) {
+				console.log('[ChatInterface] Stream result:', {
+					hasRequiresApproval: result.requiresApproval,
+					hasStream: !!result.stream,
+					hasInterruptions: !!result.stream?.interruptions,
+					interruptionCount: result.stream?.interruptions?.length,
+					hasApprovalData: !!result.approvalData,
+					hasApprovalTools: hasApprovalTools,
+					pendingApprovalsCount: pendingApprovals.length
+				});
+
+				// Check for SDK interruptions first
+				if (result.stream?.interruptions && result.stream.interruptions.length > 0) {
+					// Use the actual SDK interruptions
+					const toolApprovalMessage: ChatMessage = {
+						id: Date.now().toString() + "-tool-approval",
+						role: "assistant",
+						content: "", // Empty content for tool approval message
+						timestamp: Date.now(),
+						status: "complete",
+						streamResult: result.stream,
+						approvalStatus: "pending",
+					};
+					console.log('[ChatInterface] Creating tool approval message from SDK interruptions:', {
+						messageId: toolApprovalMessage.id,
+						approvalStatus: toolApprovalMessage.approvalStatus,
+						interruptionCount: result.stream.interruptions.length,
+						hasStreamResult: !!toolApprovalMessage.streamResult,
+						interruptions: result.stream.interruptions
+					});
+					addMessage(toolApprovalMessage);
+				} else if (hasApprovalTools && pendingApprovals.length > 0) {
+					// Fallback to manually tracked approvals
 					const toolApprovalMessage: ChatMessage = {
 						id: Date.now().toString() + "-tool-approval",
 						role: "assistant",
@@ -410,6 +440,12 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 						},
 						approvalStatus: "pending",
 					};
+					console.log('[ChatInterface] Creating tool approval message from manual tracking:', {
+						messageId: toolApprovalMessage.id,
+						approvalStatus: toolApprovalMessage.approvalStatus,
+						interruptionCount: pendingApprovals.length,
+						hasStreamResult: !!toolApprovalMessage.streamResult
+					});
 					addMessage(toolApprovalMessage);
 				} else if (result.requiresApproval) {
 					// Handle non-streaming approvals
