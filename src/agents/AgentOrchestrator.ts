@@ -117,12 +117,11 @@ export class AgentOrchestrator {
 		this.toolRegistry.register(new DeleteFileTool());
 		this.toolRegistry.register(new CreateFolderTool());
 		this.toolRegistry.register(new CopyFileTool());
-		// Temporarily disabled new tools due to build issues
-		// this.toolRegistry.register(new AppendNoteTool());
-		// this.toolRegistry.register(new InsertTextTool());
-		// this.toolRegistry.register(new SearchReplaceTool());
-		// this.toolRegistry.register(new MoveFileTool());
-		// this.toolRegistry.register(new AnalyzeVaultTool());
+		this.toolRegistry.register(new AppendNoteTool());
+		this.toolRegistry.register(new InsertTextTool());
+		this.toolRegistry.register(new SearchReplaceTool());
+		this.toolRegistry.register(new MoveFileTool());
+		this.toolRegistry.register(new AnalyzeVaultTool());
 		
 		// Note: Web and code interpreter tools are OpenAI SDK tools that are added directly
 

@@ -19,7 +19,7 @@ export class ModifyNoteTool implements Tool {
     mode: z.enum(['replace', 'smart', 'merge']).default('smart').describe(
       'Modification mode: replace (full replacement), smart (preserve structure), merge (combine intelligently)'
     ),
-    section: z.string().optional().describe('Specific section to modify (for smart mode)'),
+    section: z.string().nullable().default(null).describe('Specific section to modify (for smart mode)'),
     preserveFrontmatter: z.boolean().default(true).describe('Whether to preserve YAML frontmatter'),
   });
   
@@ -66,7 +66,7 @@ export class ModifyNoteTool implements Tool {
             
           case 'smart':
             // Smart update - preserve structure and update intelligently
-            newContent = await this.smartUpdate(oldContent, content, section, preserveFrontmatter);
+            newContent = await this.smartUpdate(oldContent, content, section || undefined, preserveFrontmatter);
             break;
             
           case 'merge':

@@ -14,9 +14,9 @@ export class AnalyzeVaultTool implements Tool {
 
 	schema = z.object({
 		action: z.enum(['structure', 'suggest_path', 'find_similar', 'get_suggestions']).describe('The type of analysis to perform'),
-		fileName: z.string().optional().describe('File name for path suggestion or similarity search'),
-		content: z.string().optional().describe('File content for better path suggestion'),
-		fileType: z.string().optional().describe('Type of content (meeting, daily, task, etc.)'),
+		fileName: z.string().nullable().default(null).describe('File name for path suggestion or similarity search'),
+		content: z.string().nullable().default(null).describe('File content for better path suggestion'),
+		fileType: z.string().nullable().default(null).describe('Type of content (meeting, daily, task, etc.)'),
 		limit: z.number().default(5).describe('Number of results to return for similarity search')
 	});
 
@@ -78,9 +78,9 @@ export class AnalyzeVaultTool implements Tool {
 
 				case 'suggest_path': {
 					const classification = await analyzer.suggestPath(
-						fileName!,
+						fileName || '',
 						content || '',
-						fileType
+						fileType || undefined
 					);
 
 					const message = [
@@ -107,7 +107,7 @@ export class AnalyzeVaultTool implements Tool {
 				}
 
 				case 'find_similar': {
-					const similarFiles = analyzer.findSimilarFiles(fileName!, content, limit);
+					const similarFiles = analyzer.findSimilarFiles(fileName || '', content || undefined, limit);
 
 					if (similarFiles.length === 0) {
 						return {

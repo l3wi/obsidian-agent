@@ -17,7 +17,7 @@ export class CreateNoteTool implements Tool {
     path: z.string().describe('The file path for the new note (e.g., "Notes/MyNote.md")'),
     content: z.string().describe('The content of the note in Markdown format'),
     smartPlacement: z.boolean().default(true).describe('Use smart placement to suggest better location based on vault structure'),
-    fileType: z.string().optional().describe('Type of content (meeting, daily, task, project, etc.)'),
+    fileType: z.string().nullable().default(null).describe('Type of content (meeting, daily, task, project, etc.)'),
   });
   
   async validate(args: z.infer<typeof this.schema>, context: ToolContext) {
@@ -59,7 +59,7 @@ export class CreateNoteTool implements Tool {
         const fileName = path.split('/').pop() || path;
         
         // Get path suggestion
-        const classification = await analyzer.suggestPath(fileName, content, fileType);
+        const classification = await analyzer.suggestPath(fileName, content, fileType || undefined);
         
         // If confidence is high and path is different, use suggested path
         if (classification.confidence > 0.6 && classification.suggestedPath !== path) {
