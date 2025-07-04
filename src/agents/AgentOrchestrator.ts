@@ -38,6 +38,12 @@ export class AgentOrchestrator {
 	private convertChatHistory(messages: ChatMessage[]): any[] {
 		return messages
 			.map((msg) => {
+				// Skip messages without content
+				if (!msg.content) {
+					console.warn("[AgentOrchestrator] Skipping message without content:", msg);
+					return null;
+				}
+				
 				if (msg.role === "user") {
 					return user(msg.content);
 				} else if (msg.role === "assistant") {
