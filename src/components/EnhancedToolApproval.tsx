@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import { ToolCallIdGenerator } from '../tools/utils/ToolCallIdGenerator';
-import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
 interface EnhancedToolApprovalProps {
 	interruptions: any[];
@@ -16,17 +15,7 @@ export const EnhancedToolApproval: React.FC<EnhancedToolApprovalProps> = ({
 	onRejectAll,
 	showStatus,
 }) => {
-	const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set());
 	const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
-	const [focusedIndex, setFocusedIndex] = useState<number>(0);
-	
-	// Initialize with all tools selected
-	useEffect(() => {
-		const toolIds = interruptions.map(i => 
-			ToolCallIdGenerator.extractFromInterruption(i) || Math.random().toString()
-		);
-		setSelectedTools(new Set(toolIds));
-	}, [interruptions]);
 	
 	// Format tool names for display
 	const formatToolName = (toolName: string): string => {
@@ -56,26 +45,6 @@ export const EnhancedToolApproval: React.FC<EnhancedToolApprovalProps> = ({
 		return iconMap[toolName] || "🔧";
 	};
 	
-	const selectAll = () => {
-		const toolIds = interruptions.map(i => 
-			ToolCallIdGenerator.extractFromInterruption(i) || Math.random().toString()
-		);
-		setSelectedTools(new Set(toolIds));
-	};
-	
-	const deselectAll = () => {
-		setSelectedTools(new Set());
-	};
-	
-	const toggleTool = (id: string) => {
-		const newSelected = new Set(selectedTools);
-		if (newSelected.has(id)) {
-			newSelected.delete(id);
-		} else {
-			newSelected.add(id);
-		}
-		setSelectedTools(newSelected);
-	};
 	
 	const toggleExpanded = (id: string) => {
 		const newExpanded = new Set(expandedTools);
@@ -87,67 +56,31 @@ export const EnhancedToolApproval: React.FC<EnhancedToolApprovalProps> = ({
 		setExpandedTools(newExpanded);
 	};
 	
-	const handleApprove = () => {
+	const handleApproveAll = () => {
 		const approvals = new Map<string, boolean>();
 		interruptions.forEach(interruption => {
 			const id = ToolCallIdGenerator.extractFromInterruption(interruption);
 			if (id) {
-				approvals.set(id, selectedTools.has(id));
+				approvals.set(id, true);
 			}
 		});
 		onApprove(approvals);
 	};
 	
-	// Keyboard navigation functions
-	const toggleCurrentTool = () => {
-		if (interruptions.length === 0) return;
-		const currentId = ToolCallIdGenerator.extractFromInterruption(interruptions[focusedIndex]);
-		if (currentId) {
-			toggleTool(currentId);
-		}
-	};
-	
-	const moveFocusUp = () => {
-		setFocusedIndex(prev => Math.max(0, prev - 1));
-	};
-	
-	const moveFocusDown = () => {
-		setFocusedIndex(prev => Math.min(interruptions.length - 1, prev + 1));
-	};
-	
-	// Set up keyboard shortcuts
-	useKeyboardShortcuts({
-		'cmd+a': selectAll,
-		'cmd+shift+a': deselectAll,
-		'cmd+enter': handleApprove,
-		'escape': onRejectAll,
-		'space': toggleCurrentTool,
-		'up': moveFocusUp,
-		'down': moveFocusDown,
-	});
 	
 	const renderToolPreview = (interruption: any, index: number) => {
 		const toolName = ToolCallIdGenerator.extractToolName(interruption) || "Unknown tool";
 		const args = ToolCallIdGenerator.extractArguments(interruption);
 		const id = ToolCallIdGenerator.extractFromInterruption(interruption) || Math.random().toString();
 		const isExpanded = expandedTools.has(id);
-		const isSelected = selectedTools.has(id);
-		const isFocused = index === focusedIndex;
 		
 		return (
-			<div key={id} className={`enhanced-tool-item ${isFocused ? 'focused' : ''}`}>
+			<div key={id} className="enhanced-tool-item">
 				<div className="tool-header">
-					<input
-						type="checkbox"
-						checked={isSelected}
-						onChange={() => toggleTool(id)}
-						className="tool-checkbox"
-						id={`tool-${id}`}
-					/>
-					<label htmlFor={`tool-${id}`} className="tool-label">
+					<div className="tool-label">
 						<span className="tool-icon">{getToolIcon(toolName)}</span>
 						<span className="tool-name">{formatToolName(toolName)}</span>
-					</label>
+					</div>
 					{args.path && <span className="tool-path">{args.path}</span>}
 					<button
 						className="tool-expand"
@@ -245,15 +178,7 @@ export const EnhancedToolApproval: React.FC<EnhancedToolApprovalProps> = ({
 	return (
 		<div className="enhanced-tool-approval">
 			<div className="tool-approval-header">
-				<span>Review Operations</span>
-				<div className="approval-controls">
-					<button className="control-btn" onClick={selectAll}>
-						Select All
-					</button>
-					<button className="control-btn" onClick={deselectAll}>
-						Deselect All
-					</button>
-				</div>
+				<span>Review {interruptions.length} Operation{interruptions.length !== 1 ? 's' : ''}</span>
 			</div>
 			
 			<div className="tool-approval-list">
@@ -261,9 +186,6 @@ export const EnhancedToolApproval: React.FC<EnhancedToolApprovalProps> = ({
 			</div>
 			
 			<div className="tool-approval-footer">
-				<div className="approval-summary">
-					{selectedTools.size} of {interruptions.length} operations selected
-				</div>
 				<div className="approval-actions">
 					<button
 						className="approval-button reject"
@@ -273,29 +195,10 @@ export const EnhancedToolApproval: React.FC<EnhancedToolApprovalProps> = ({
 					</button>
 					<button
 						className="approval-button approve"
-						onClick={handleApprove}
-						disabled={selectedTools.size === 0}
+						onClick={handleApproveAll}
 					>
-						Approve Selected ({selectedTools.size})
+						Approve All
 					</button>
-				</div>
-			</div>
-			
-			<div className="approval-shortcuts">
-				<div className="shortcut-hint">
-					<kbd>Space</kbd> Toggle selection
-				</div>
-				<div className="shortcut-hint">
-					<kbd>⌘A</kbd> Select all
-				</div>
-				<div className="shortcut-hint">
-					<kbd>⌘⇧A</kbd> Deselect all
-				</div>
-				<div className="shortcut-hint">
-					<kbd>⌘↵</kbd> Approve
-				</div>
-				<div className="shortcut-hint">
-					<kbd>Esc</kbd> Reject
 				</div>
 			</div>
 		</div>

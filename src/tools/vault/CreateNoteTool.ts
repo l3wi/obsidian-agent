@@ -1,5 +1,6 @@
 import { Tool, ToolContext } from '../types';
 import { z } from 'zod/v3';
+import { useUndoStore, createUndoableFileOperation } from '../../stores/undoStore';
 
 export class CreateNoteTool implements Tool {
   metadata = {
@@ -55,6 +56,16 @@ export class CreateNoteTool implements Tool {
       
       // Create the note
       await context.app.vault.create(path, content);
+      
+      // Add to undo history
+      const undoOperation = createUndoableFileOperation(
+        context.app,
+        'create',
+        path,
+        undefined,
+        content
+      );
+      useUndoStore.getState().addOperation(undoOperation);
       
       return {
         success: true,

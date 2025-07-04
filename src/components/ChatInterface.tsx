@@ -20,7 +20,8 @@ import {
 	useConversationStore, 
 	useToolStore, 
 	useStreamStore, 
-	useContextStore 
+	useContextStore,
+	useUndoStore
 } from "../stores";
 import { useStreamingMessage } from "../hooks/useStreamingMessage";
 
@@ -36,6 +37,7 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 		const { currentTool, getToolHistory, clearPendingApprovals } = useToolStore();
 		const { contextFiles, setContextFiles, removeContextFile } = useContextStore();
 		const { startStreaming, updateStreamingContent, completeStreaming, handleToolCall } = useStreamingMessage();
+		const { undo, redo, canUndo, canRedo } = useUndoStore();
 		
 		const messagesEndRef = useRef<HTMLDivElement>(null);
 		
@@ -670,13 +672,31 @@ export const ChatInterface = forwardRef<any, ChatInterfaceProps>(
 			<div className="chat-assistant-interface">
 				<div className="chat-header">
 					<h3>Chat Assistant</h3>
-					<button
-						className="chat-clear-button"
-						onClick={handleClearChat}
-						title="Clear chat"
-					>
-						Clear
-					</button>
+					<div className="chat-header-actions">
+						<button
+							className="chat-action-button"
+							onClick={() => undo()}
+							disabled={!canUndo()}
+							title="Undo last file operation"
+						>
+							↶ Undo
+						</button>
+						<button
+							className="chat-action-button"
+							onClick={() => redo()}
+							disabled={!canRedo()}
+							title="Redo last file operation"
+						>
+							↷ Redo
+						</button>
+						<button
+							className="chat-clear-button"
+							onClick={handleClearChat}
+							title="Clear chat"
+						>
+							Clear
+						</button>
+					</div>
 				</div>
 				<ContextBadges
 					files={contextFiles}
