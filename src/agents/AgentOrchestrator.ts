@@ -1,19 +1,25 @@
 import {
 	Agent,
 	run,
-	webSearchTool,
-	codeInterpreterTool,
 	OpenAIProvider,
 	setDefaultModelProvider,
-	tool,
 	user,
 	assistant,
 	system,
 } from "@openai/agents";
-import { z } from "zod/v3";
 import OpenAI from "openai";
 import { App } from "obsidian";
-import { ApprovalRequest, ChatMessage } from "../types";
+import { ApprovalRequest, ChatMessage, ChatAssistantSettings, DEFAULT_SETTINGS } from "../types";
+import { ToolRegistry } from "../tools/ToolRegistry";
+import { ToolContext } from "../tools/types";
+import {
+	CreateNoteTool,
+	ModifyNoteTool,
+	DeleteFileTool,
+	CreateFolderTool,
+	CopyFileTool,
+} from "../tools/vault";
+import { WebSearchTool, CodeInterpreterTool } from "../tools/web";
 
 export class AgentOrchestrator {
 	private app: App;
@@ -23,6 +29,8 @@ export class AgentOrchestrator {
 	private maxTurns: number;
 	private openaiClient: OpenAI;
 	private provider: OpenAIProvider;
+	private toolRegistry: ToolRegistry;
+	private settings: ChatAssistantSettings = DEFAULT_SETTINGS;
 
 	/**
 	 * Convert chat messages to agent input format
@@ -68,142 +76,25 @@ export class AgentOrchestrator {
 		// Set as default provider for all agents
 		setDefaultModelProvider(this.provider);
 
-		// Create vault-specific tools
-		const createNoteTool = tool({
-			name: "create_note",
-			description: "Create a new note in the Obsidian vault",
-			parameters: z.object({
-				path: z
-					.string()
-					.describe(
-						'The file path for the new note (e.g., "Notes/MyNote.md")'
-					),
-				content: z
-					.string()
-					.describe("The content of the note in Markdown format"),
-			}),
-			needsApproval: async () => true, // Always require approval for creating notes
-			execute: async ({ path, content }) => {
-				// This will be executed after approval
-				try {
-					const parentFolder = path.substring(
-						0,
-						path.lastIndexOf("/")
-					);
-					if (
-						parentFolder &&
-						!this.app.vault.getAbstractFileByPath(parentFolder)
-					) {
-						await this.app.vault.createFolder(parentFolder);
-					}
-					await this.app.vault.create(path, content);
-					return `Successfully created note at ${path}`;
-				} catch (error) {
-					return `Failed to create note: ${error.message}`;
-				}
-			},
-		});
-
-		const modifyNoteTool = tool({
-			name: "modify_note",
-			description: "Modify an existing note in the Obsidian vault",
-			parameters: z.object({
-				path: z
-					.string()
-					.describe("The file path of the note to modify"),
-				content: z.string().describe("The new content for the note"),
-			}),
-			needsApproval: async () => true, // Always require approval for modifying notes
-			execute: async ({ path, content }) => {
-				try {
-					const file = this.app.vault.getAbstractFileByPath(path);
-					if (file && "extension" in file) {
-						// Check if it's a TFile
-						await this.app.vault.process(
-							file as any,
-							() => content
-						);
-						return `Successfully modified note at ${path}`;
-					}
-					return `File not found: ${path}`;
-				} catch (error) {
-					return `Failed to modify note: ${error.message}`;
-				}
-			},
-		});
-
-		const createFolderTool = tool({
-			name: "create_folder",
-			description: "Create a new folder in the Obsidian vault",
-			parameters: z.object({
-				path: z
-					.string()
-					.describe(
-						'The path for the new folder (e.g., "Notes/My Folder")'
-					),
-			}),
-			needsApproval: async () => true,
-			execute: async ({ path }) => {
-				try {
-					await this.app.vault.createFolder(path);
-					return `Successfully created folder at ${path}`;
-				} catch (error) {
-					return `Failed to create folder: ${error.message}`;
-				}
-			},
-		});
-
-		const copyFileTool = tool({
-			name: "copy_file",
-			description:
-				"Copy a file or folder to a new location in the Obsidian vault",
-			parameters: z.object({
-				sourcePath: z
-					.string()
-					.describe("The path of the file or folder to copy"),
-				destinationPath: z
-					.string()
-					.describe("The path of the new file or folder"),
-			}),
-			needsApproval: async () => true,
-			execute: async ({ sourcePath, destinationPath }) => {
-				try {
-					const file =
-						this.app.vault.getAbstractFileByPath(sourcePath);
-					if (file) {
-						await this.app.vault.copy(file, destinationPath);
-						return `Successfully copied ${sourcePath} to ${destinationPath}`;
-					}
-					return `File not found: ${sourcePath}`;
-				} catch (error) {
-					return `Failed to copy file: ${error.message}`;
-				}
-			},
-		});
-
-		const deleteFileTool = tool({
-			name: "delete_file",
-			description:
-				"Delete a file or folder in the Obsidian vault (moves to trash)",
-			parameters: z.object({
-				path: z
-					.string()
-					.describe("The path of the file or folder to delete"),
-			}),
-			needsApproval: async () => true,
-			execute: async ({ path }) => {
-				try {
-					const file = this.app.vault.getAbstractFileByPath(path);
-					if (file) {
-						await this.app.vault.trash(file, true);
-						return `Successfully moved ${path} to trash`;
-					}
-					return `File not found: ${path}`;
-				} catch (error) {
-					return `Failed to delete file: ${error.message}`;
-				}
-			},
-		});
+		// Initialize tool registry
+		const toolContext: ToolContext = {
+			app,
+			apiKey,
+			settings: this.settings,
+		};
+		
+		this.toolRegistry = new ToolRegistry(toolContext);
+		
+		// Register vault tools
+		this.toolRegistry.register(new CreateNoteTool());
+		this.toolRegistry.register(new ModifyNoteTool());
+		this.toolRegistry.register(new DeleteFileTool());
+		this.toolRegistry.register(new CreateFolderTool());
+		this.toolRegistry.register(new CopyFileTool());
+		
+		// Register web and analysis tools
+		this.toolRegistry.register(new WebSearchTool());
+		this.toolRegistry.register(new CodeInterpreterTool());
 
 		// Initialize the conductor agent with OpenAI hosted tools and vault tools
 		this.conductor = new Agent({
@@ -253,15 +144,7 @@ Your tools:
 7. delete_file: Delete files or folders
 
 Remember: ALWAYS analyze context before acting. The user's request likely relates to something already visible or recently accessed.`,
-			tools: [
-				webSearchTool(),
-				codeInterpreterTool(),
-				createNoteTool,
-				modifyNoteTool,
-				createFolderTool,
-				copyFileTool,
-				deleteFileTool,
-			],
+			tools: this.toolRegistry.getEnabledAgentTools(),
 			modelSettings: {
 				temperature: 0.7,
 				parallelToolCalls: true,
@@ -662,5 +545,43 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 		} else {
 			return "The operation has been cancelled as requested.";
 		}
+	}
+
+	/**
+	 * Update enabled tools dynamically
+	 */
+	updateEnabledTools(enabledToolIds: string[]): void {
+		// Disable all tools first
+		this.toolRegistry.getTools().forEach(tool => {
+			this.toolRegistry.setEnabled(tool.metadata.id, false);
+		});
+		
+		// Enable specified tools
+		enabledToolIds.forEach(id => {
+			this.toolRegistry.setEnabled(id, true);
+		});
+		
+		// Recreate conductor with new tools
+		this.conductor = new Agent({
+			name: this.conductor.name,
+			model: this.conductor.model,
+			instructions: this.conductor.instructions,
+			tools: this.toolRegistry.getEnabledAgentTools(),
+			modelSettings: this.conductor.modelSettings,
+		});
+	}
+
+	/**
+	 * Get available tools
+	 */
+	getAvailableTools() {
+		return this.toolRegistry.getTools();
+	}
+
+	/**
+	 * Get tool registry
+	 */
+	getToolRegistry() {
+		return this.toolRegistry;
 	}
 }
