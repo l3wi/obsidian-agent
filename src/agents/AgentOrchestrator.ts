@@ -14,6 +14,10 @@ import { z } from "zod/v3";
 import OpenAI from "openai";
 import { App } from "obsidian";
 import { ApprovalRequest, ChatMessage } from "../types";
+import { ErrorFactory } from "../errors/ErrorFactory";
+import { RetryHandler } from "../utils/RetryHandler";
+import { CircuitBreaker, CircuitState } from "../utils/CircuitBreaker";
+import { ChatAssistantError, ErrorCode } from "../errors/types";
 
 export class AgentOrchestrator {
 	private app: App;
@@ -23,6 +27,7 @@ export class AgentOrchestrator {
 	private maxTurns: number;
 	private openaiClient: OpenAI;
 	private provider: OpenAIProvider;
+	private circuitBreaker: CircuitBreaker;
 
 	/**
 	 * Convert chat messages to agent input format
@@ -52,6 +57,16 @@ export class AgentOrchestrator {
 		console.log("[AgentOrchestrator] Initialized with:", {
 			model,
 			maxTurns,
+		});
+
+		// Initialize circuit breaker for API calls
+		this.circuitBreaker = new CircuitBreaker({
+			failureThreshold: 5,
+			resetTimeout: 60000, // 1 minute
+			monitoringPeriod: 300000, // 5 minutes
+			onStateChange: (oldState, newState) => {
+				console.log(`[AgentOrchestrator] Circuit breaker state changed: ${oldState} -> ${newState}`);
+			}
 		});
 
 		// Create OpenAI client with browser support for Obsidian
@@ -86,6 +101,11 @@ export class AgentOrchestrator {
 			execute: async ({ path, content }) => {
 				// This will be executed after approval
 				try {
+					// Check if file already exists
+					if (this.app.vault.getAbstractFileByPath(path)) {
+						throw ErrorFactory.vaultFileExists(path);
+					}
+					
 					const parentFolder = path.substring(
 						0,
 						path.lastIndexOf("/")
@@ -99,6 +119,9 @@ export class AgentOrchestrator {
 					await this.app.vault.create(path, content);
 					return `Successfully created note at ${path}`;
 				} catch (error) {
+					if (error instanceof ChatAssistantError) {
+						return `Failed to create note: ${error.userMessage}`;
+					}
 					return `Failed to create note: ${error.message}`;
 				}
 			},
@@ -287,11 +310,52 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 		stream?: any; // StreamedRunResult
 	}> {
 		const agentMessages = this.convertChatHistory(messages);
-		return this.processMessageStream(
-			agentMessages,
-			onChunk,
-			onToolCall,
-			onApprovalNeeded
+		
+		// Wrap in retry handler with circuit breaker
+		return RetryHandler.withRetry(
+			async () => {
+				return this.circuitBreaker.execute(async () => {
+					try {
+						return await this.processMessageStream(
+							agentMessages,
+							onChunk,
+							onToolCall,
+							onApprovalNeeded
+						);
+					} catch (error) {
+						// Transform API errors to our error types
+						if (error.status === 401) {
+							throw ErrorFactory.invalidApiKey({ 
+								endpoint: 'openai',
+								model: this.model 
+							});
+						} else if (error.status === 429) {
+							const retryAfter = error.headers?.['retry-after'] 
+								? parseInt(error.headers['retry-after']) * 1000 
+								: 60000;
+							throw ErrorFactory.apiRateLimit(retryAfter, {
+								endpoint: 'openai',
+								model: this.model
+							});
+						} else if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
+							throw ErrorFactory.networkTimeout({
+								endpoint: 'openai',
+								model: this.model,
+								originalError: error.message
+							});
+						}
+						
+						// Re-throw unknown errors
+						throw error;
+					}
+				});
+			},
+			{
+				maxAttempts: 3,
+				onRetry: (attempt, error) => {
+					console.log(`[AgentOrchestrator] Retry attempt ${attempt} after error:`, error);
+				}
+			}
 		);
 	}
 
@@ -555,17 +619,18 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 		approvalData?: ApprovalRequest;
 		stream?: any; // StreamedRunResult
 	}> {
+		// Validate stream state
+		if (!stream || !stream.state) {
+			throw ErrorFactory.streamStateInvalid({
+				hasStream: !!stream,
+				hasState: !!stream?.state,
+				hasInterruptions: !!stream?.interruptions
+			});
+		}
+		
 		if (!stream.interruptions || stream.interruptions.length === 0) {
 			return {
 				response: "No approvals needed",
-				requiresApproval: false,
-			};
-		}
-
-		if (!stream.state) {
-			console.error('[AgentOrchestrator] No state found in stream result');
-			return {
-				response: "Error: Unable to continue - no state found",
 				requiresApproval: false,
 			};
 		}
@@ -595,56 +660,71 @@ Remember: ALWAYS analyze context before acting. The user's request likely relate
 			}
 		}
 
-		// Resume execution with streaming using the existing state which includes history
-		const resumedStream = await run(this.conductor, state, {
-			stream: true,
-			maxTurns: this.maxTurns,
-		});
+		try {
+			// Resume execution with streaming using the existing state which includes history
+			const resumedStream = await RetryHandler.withRetry(
+				async () => {
+					return await run(this.conductor, state, {
+						stream: true,
+						maxTurns: this.maxTurns,
+					});
+				},
+				{
+					maxAttempts: 2,
+					retryableErrors: [ErrorCode.STREAM_RESUME_FAILED]
+				}
+			);
 
-		let fullResponse = "";
-		let currentText = "";
+			let fullResponse = "";
+			let currentText = "";
 
-		// Process the resumed stream
-		for await (const event of resumedStream) {
-			if (event.type === "raw_model_stream_event") {
-				const data = event.data;
-				if (
-					"type" in data &&
-					data.type === "output_text_delta" &&
-					"delta" in data
-				) {
-					onChunk(data.delta as string);
-					currentText += data.delta as string;
+			// Process the resumed stream
+			for await (const event of resumedStream) {
+				if (event.type === "raw_model_stream_event") {
+					const data = event.data;
+					if (
+						"type" in data &&
+						data.type === "output_text_delta" &&
+						"delta" in data
+					) {
+						onChunk(data.delta as string);
+						currentText += data.delta as string;
+					}
 				}
 			}
-		}
 
-		await resumedStream.completed;
-		// The final output is in the currentText we accumulated
-		fullResponse = currentText;
+			await resumedStream.completed;
+			// The final output is in the currentText we accumulated
+			fullResponse = currentText;
 
-		// Check for more interruptions
-		if (
-			resumedStream.interruptions &&
-			resumedStream.interruptions.length > 0
-		) {
+			// Check for more interruptions
+			if (
+				resumedStream.interruptions &&
+				resumedStream.interruptions.length > 0
+			) {
+				return {
+					response: fullResponse,
+					requiresApproval: true,
+					approvalData: {
+						id: Date.now().toString(),
+						type: "create",
+						description: "Additional tool approval required",
+						content: JSON.stringify(resumedStream.interruptions),
+					},
+					stream: resumedStream,
+				};
+			}
+
 			return {
 				response: fullResponse,
-				requiresApproval: true,
-				approvalData: {
-					id: Date.now().toString(),
-					type: "create",
-					description: "Additional tool approval required",
-					content: JSON.stringify(resumedStream.interruptions),
-				},
-				stream: resumedStream,
+				requiresApproval: false,
 			};
+		} catch (error) {
+			throw ErrorFactory.streamResumeFailure(error as Error, {
+				approvalCount: approvals.size,
+				interruptionCount: stream.interruptions.length,
+			});
 		}
-
-		return {
-			response: fullResponse,
-			requiresApproval: false,
-		};
 	}
 
 	/**
