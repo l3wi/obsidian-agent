@@ -3,3 +3,8 @@ export { ModifyNoteTool } from './ModifyNoteTool';
 export { DeleteFileTool } from './DeleteFileTool';
 export { CreateFolderTool } from './CreateFolderTool';
 export { CopyFileTool } from './CopyFileTool';
+export { AppendNoteTool } from './AppendNoteTool';
+export { InsertTextTool } from './InsertTextTool';
+export { SearchReplaceTool } from './SearchReplaceTool';
+export { MoveFileTool } from './MoveFileTool';
+export { AnalyzeVaultTool } from './AnalyzeVaultTool';
