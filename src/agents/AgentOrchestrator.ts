@@ -18,6 +18,11 @@ import {
 	DeleteFileTool,
 	CreateFolderTool,
 	CopyFileTool,
+	AppendNoteTool,
+	InsertTextTool,
+	SearchReplaceTool,
+	MoveFileTool,
+	AnalyzeVaultTool,
 } from "../tools/vault";
 import { WebSearchTool, CodeInterpreterTool } from "../tools/web";
 import { ErrorFactory } from "../errors/ErrorFactory";
@@ -112,6 +117,11 @@ export class AgentOrchestrator {
 		this.toolRegistry.register(new DeleteFileTool());
 		this.toolRegistry.register(new CreateFolderTool());
 		this.toolRegistry.register(new CopyFileTool());
+		this.toolRegistry.register(new AppendNoteTool());
+		this.toolRegistry.register(new InsertTextTool());
+		this.toolRegistry.register(new SearchReplaceTool());
+		this.toolRegistry.register(new MoveFileTool());
+		this.toolRegistry.register(new AnalyzeVaultTool());
 		
 		// Note: Web and code interpreter tools are OpenAI SDK tools that are added directly
 

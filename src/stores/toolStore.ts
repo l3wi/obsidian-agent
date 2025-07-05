@@ -25,6 +25,8 @@ interface ToolState {
   resolvePendingApproval: (id: string, approved: boolean) => void;
   clearPendingApprovals: () => void;
   getToolHistory: () => string[];
+  getPendingApprovals: () => Map<string, any>;
+  hasApprovalTools: () => boolean;
 }
 
 export const useToolStore = create<ToolState>()(
@@ -76,6 +78,16 @@ export const useToolStore = create<ToolState>()(
           }
           return exec.toolName;
         });
+      },
+      
+      getPendingApprovals: () => {
+        const state = get();
+        return state.pendingApprovals;
+      },
+      
+      hasApprovalTools: () => {
+        const state = get();
+        return state.pendingApprovals.size > 0;
       },
     })
   )
